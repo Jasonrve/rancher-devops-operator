@@ -11,16 +11,27 @@ COPY rancher-devops-operator/*.csproj ./rancher-devops-operator/
 COPY *.sln ./
 
 # Restore dependencies for the target architecture with runtime identifier
-RUN dotnet restore -r linux-musl-x64
+# Map Docker's TARGETARCH to .NET RID
+RUN case "$TARGETARCH" in \
+        "amd64") RID=linux-musl-x64 ;; \
+        "arm64") RID=linux-musl-arm64 ;; \
+        *) echo "Unsupported TARGETARCH: $TARGETARCH" ; exit 1 ;; \
+    esac \
+    && dotnet restore -r $RID
 
 # Copy everything else
 COPY rancher-devops-operator/. ./rancher-devops-operator/
 
 # Build and publish with AOT - with optimizations for smaller size
 WORKDIR /source/rancher-devops-operator
-RUN dotnet publish -c Release -r linux-musl-x64 --no-restore -o /app --self-contained \
-    /p:StripSymbols=true \
-    /p:EnableCompressionInSingleFile=true
+RUN case "$TARGETARCH" in \
+        "amd64") RID=linux-musl-x64 ;; \
+        "arm64") RID=linux-musl-arm64 ;; \
+        *) echo "Unsupported TARGETARCH: $TARGETARCH" ; exit 1 ;; \
+    esac \
+    && dotnet publish -c Release -r $RID --no-restore -o /app --self-contained \
+        /p:StripSymbols=true \
+        /p:EnableCompressionInSingleFile=true
 
 # Strip additional symbols from the binary
 RUN strip /app/rancher-devops-operator

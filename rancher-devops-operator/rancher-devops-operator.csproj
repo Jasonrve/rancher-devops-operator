@@ -23,6 +23,10 @@
         <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
         <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
         <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+        <!-- Reduce noise from third-party libraries that aren't fully annotated -->
+        <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+        <SuppressAotAnalysisWarnings>true</SuppressAotAnalysisWarnings>
     </PropertyGroup>
 
     <ItemGroup>
