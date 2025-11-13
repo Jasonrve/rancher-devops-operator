@@ -1,0 +1,87 @@
+# Default values for rancher-devops-operator
+replicaCount: 1
+
+image:
+  repository: ghcr.io/your-org/rancher-devops-operator
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Prometheus metrics configuration
+metrics:
+  # Enable ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+      # prometheus: kube-prometheus
+
+# Rancher configuration
+rancher:
+  # URL of your Rancher server
+  url: "https://rancher.local"
+  
+  # Authentication method 1: Static API token (recommended for production)
+  # Rancher API token (should be provided via secret)
+  token: ""
+  
+  # Authentication method 2: Username/Password (will create tokens automatically)
+  # Username for Rancher login
+  username: ""
+  # Password for Rancher login
+  password: ""
+  
+  # Allow insecure SSL (for development only)
+  allowInsecureSsl: false
+  
+  # If using an existing secret for authentication
+  # The secret should contain keys: 'token' OR 'username' and 'password'
+  existingSecret: ""
+  existingSecretTokenKey: "token"
+  existingSecretUsernameKey: "username"
+  existingSecretPasswordKey: "password"
+
+# Environment variables
+env: []
+  # - name: CUSTOM_VAR
+  #   value: "custom-value"
