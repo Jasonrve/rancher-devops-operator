@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
 ARG TARGETARCH
 WORKDIR /source
 
 # Install native AOT prerequisites
-RUN apk add --no-cache clang build-base zlib-dev
+RUN apk add --no-cache clang lld build-base zlib-dev
 
 # Copy project files
 COPY rancher-devops-operator/*.csproj ./rancher-devops-operator/
