@@ -10,14 +10,8 @@ RUN apk add --no-cache clang lld build-base musl-dev zlib-dev
 COPY rancher-devops-operator/*.csproj ./rancher-devops-operator/
 COPY *.sln ./
 
-# Restore dependencies for the target architecture with runtime identifier
-# Map Docker's TARGETARCH to .NET RID
-RUN case "$TARGETARCH" in \
-        "amd64") RID=linux-musl-x64 ;; \
-        "arm64") RID=linux-musl-arm64 ;; \
-        *) echo "Unsupported TARGETARCH: $TARGETARCH" ; exit 1 ;; \
-    esac \
-    && dotnet restore -r $RID
+# Restore dependencies (framework-dependent now; no RID-specific restore needed)
+RUN dotnet restore
 
 # Install KubeOps CLI tool (optional) – invoke using 'kubeops', not 'dotnet kubeops'
 ENV PATH="/root/.dotnet/tools:$PATH"
@@ -28,36 +22,23 @@ RUN dotnet tool install --global KubeOps.Cli || echo "KubeOps CLI optional; cont
 # Copy everything else
 COPY rancher-devops-operator/. ./rancher-devops-operator/
 
-# Build and publish with AOT - with optimizations for smaller size
 WORKDIR /source/rancher-devops-operator
-RUN case "$TARGETARCH" in \
-        "amd64") RID=linux-musl-x64 ;; \
-        "arm64") RID=linux-musl-arm64 ;; \
-        *) echo "Unsupported TARGETARCH: $TARGETARCH" ; exit 1 ;; \
-    esac \
-    && dotnet publish -c Release -r $RID --no-restore -o /app --self-contained \
-        /p:StripSymbols=true \
-        /p:EnableCompressionInSingleFile=true
+# Framework-dependent publish (smaller image than self-contained); AOT disabled
+RUN dotnet publish -c Release -o /app --no-restore
 
-# Strip additional symbols from the binary
-RUN strip /app/rancher-devops-operator
+# (Optional strip removed – not applicable / less beneficial for framework-dependent build)
 
 # Final stage - using Alpine for minimal size
-FROM alpine:3.19 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine AS final
 WORKDIR /app
 
-# Install only the minimal runtime dependencies needed for musl-based AOT binaries
-RUN apk add --no-cache \
-    libstdc++ \
-    libgcc \
-    zlib \
-    icu-libs
+# Base image already contains required ASP.NET & ICU dependencies
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
-# Copy the published application
-COPY --from=build /app/rancher-devops-operator .
+# Copy all publish output (binary + dlls etc.)
+COPY --from=build /app/ ./
 
-ENTRYPOINT ["./rancher-devops-operator"]
+ENTRYPOINT ["dotnet", "rancher-devops-operator.dll"]
