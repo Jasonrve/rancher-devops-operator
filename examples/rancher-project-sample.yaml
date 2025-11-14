@@ -20,9 +20,10 @@ spec:
   
   # Project members with their roles
   members:
-    - principalId: "local://user-abc123"
+    # You can specify either principalId directly OR principalName for lookup.
+    - principalName: "jdoe"  # Will be resolved to a principal ID
       role: "project-owner"
-    - principalId: "local://user-def456"
+    - principalId: "local://user-def456"  # Direct ID still works
       role: "project-member"
   
   # Optional resource quotas

@@ -19,6 +19,7 @@ public interface IRancherApiService
     Task<RancherProjectRoleBinding?> CreateProjectMemberAsync(string projectId, string principalId, string role, CancellationToken cancellationToken);
     Task<List<RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken);
+    Task<string?> GetPrincipalIdByNameAsync(string principalName, CancellationToken cancellationToken);
 }
 
 public class RancherApiService : IRancherApiService
@@ -165,6 +166,8 @@ public class RancherApiService : IRancherApiService
         try
         {
             _logger.LogInformation("Creating namespace {NamespaceName} in project {ProjectId}", namespaceName, projectId);
+            // Enforce lowercase RFC 1123 compliant name
+            namespaceName = namespaceName.ToLowerInvariant();
             // Derive clusterId from compound projectId (format: clusterId:projectId)
             var clusterIdPart = projectId.Contains(':') ? projectId.Split(':')[0] : string.Empty;
             if (string.IsNullOrEmpty(clusterIdPart))
@@ -328,6 +331,38 @@ public class RancherApiService : IRancherApiService
         {
             _logger.LogError(ex, "Error deleting project member binding {BindingId}", bindingId);
             return false;
+        }
+    }
+
+    public async Task<string?> GetPrincipalIdByNameAsync(string principalName, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        try
+        {
+            _logger.LogInformation("Resolving principal name {PrincipalName}", principalName);
+            var encoded = Uri.EscapeDataString(principalName);
+            var response = await _httpClient.GetAsync($"/v3/principals?name={encoded}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("Failed to lookup principal {PrincipalName} status {Status}: {Body}", principalName, (int)response.StatusCode, body);
+                return null;
+            }
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            var list = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherPrincipalList);
+            var match = list?.Data.FirstOrDefault(p => p.Name.Equals(principalName, StringComparison.OrdinalIgnoreCase));
+            if (match == null)
+            {
+                _logger.LogWarning("Principal name {PrincipalName} not found", principalName);
+                return null;
+            }
+            _logger.LogInformation("Resolved principal name {PrincipalName} to ID {PrincipalId}", principalName, match.Id);
+            return match.Id;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resolving principal name {PrincipalName}", principalName);
+            return null;
         }
     }
 }

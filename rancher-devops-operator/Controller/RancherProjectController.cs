@@ -38,13 +38,11 @@ public class RancherProjectController : IEntityController<V1RancherProject>
             _logger.LogInformation("Reconciling RancherProject: {Name}", entity.Metadata.Name);
             await _eventService.CreateEventAsync(entity, "ReconcileStarted", "Starting reconciliation", "Normal", cancellationToken);
 
-            // Initialize status if needed
             if (entity.Status == null)
             {
                 entity.Status = new V1RancherProject.RancherProjectStatus();
             }
 
-            // Step 1: Get cluster ID from cluster name
             var clusterId = await _rancherApi.GetClusterIdByNameAsync(entity.Spec.ClusterName, cancellationToken);
             if (string.IsNullOrEmpty(clusterId))
             {
@@ -56,25 +54,16 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                 MetricsService.RecordError("cluster_not_found");
                 return;
             }
-
             entity.Status.ClusterId = clusterId;
             await _eventService.CreateEventAsync(entity, "ClusterResolved", $"Resolved cluster '{entity.Spec.ClusterName}' to ID: {clusterId}", "Normal", cancellationToken);
 
-            // Step 2: Create or get Rancher project
             var projectName = entity.Spec.DisplayName ?? entity.Metadata.Name;
             var existingProject = await _rancherApi.GetProjectByNameAsync(clusterId, projectName, cancellationToken);
-
             if (existingProject == null)
             {
                 _logger.LogInformation("Creating new Rancher project: {ProjectName}", projectName);
                 await _eventService.CreateEventAsync(entity, "CreatingProject", $"Creating Rancher project: {projectName}", "Normal", cancellationToken);
-                
-                var newProject = await _rancherApi.CreateProjectAsync(
-                    clusterId,
-                    projectName,
-                    entity.Spec.Description,
-                    cancellationToken);
-
+                var newProject = await _rancherApi.CreateProjectAsync(clusterId, projectName, entity.Spec.Description, cancellationToken);
                 if (newProject == null)
                 {
                     entity.Status.Phase = "Error";
@@ -84,7 +73,6 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                     MetricsService.RecordError("project_creation_failed");
                     return;
                 }
-
                 entity.Status.ProjectId = newProject.Id;
                 MetricsService.ProjectsCreated.Inc();
                 MetricsService.ActiveProjects.Inc();
@@ -97,86 +85,81 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                 await _eventService.CreateEventAsync(entity, "ProjectFound", $"Using existing Rancher project: {projectName} (ID: {existingProject.Id})", "Normal", cancellationToken);
             }
 
-            // Step 3: Create namespaces
             entity.Status.CreatedNamespaces.Clear();
             var namespaceCount = 0;
-            foreach (var namespaceName in entity.Spec.Namespaces)
+            foreach (var originalNamespaceName in entity.Spec.Namespaces)
             {
                 try
                 {
-                    _logger.LogInformation("Creating namespace: {Namespace} in project {ProjectId}", 
-                        namespaceName, entity.Status.ProjectId);
-
+                    var namespaceName = originalNamespaceName.ToLowerInvariant();
+                    _logger.LogInformation("Creating namespace: {Namespace} in project {ProjectId}", namespaceName, entity.Status.ProjectId);
                     var existingNamespaces = await _rancherApi.GetProjectNamespacesAsync(entity.Status.ProjectId!, cancellationToken);
-                    var existingNs = existingNamespaces.FirstOrDefault(ns => ns.Name == namespaceName);
-
+                    var existingNs = existingNamespaces.FirstOrDefault(ns => ns.Name.Equals(namespaceName, StringComparison.OrdinalIgnoreCase));
                     if (existingNs == null)
                     {
                         await _rancherApi.CreateNamespaceAsync(entity.Status.ProjectId!, namespaceName, cancellationToken);
                         MetricsService.NamespacesCreated.Inc();
                         await _eventService.CreateEventAsync(entity, "NamespaceCreated", $"Created namespace: {namespaceName}", "Normal", cancellationToken);
                     }
-
                     entity.Status.CreatedNamespaces.Add(namespaceName);
                     namespaceCount++;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to create namespace: {Namespace}", namespaceName);
-                    await _eventService.CreateEventAsync(entity, "NamespaceCreationFailed", $"Failed to create namespace: {namespaceName} - {ex.Message}", "Warning", cancellationToken);
+                    _logger.LogError(ex, "Failed to create namespace: {Namespace}", originalNamespaceName);
+                    await _eventService.CreateEventAsync(entity, "NamespaceCreationFailed", $"Failed to create namespace: {originalNamespaceName} - {ex.Message}", "Warning", cancellationToken);
+                    entity.Status.Phase = "Error";
+                    entity.Status.ErrorMessage = ex.Message;
+                    await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
                     MetricsService.RecordError("namespace_creation_failed");
                 }
             }
             MetricsService.ActiveNamespaces.Set(namespaceCount);
 
-            // Step 4: Configure project members
             entity.Status.ConfiguredMembers.Clear();
             var memberCount = 0;
             foreach (var member in entity.Spec.Members)
             {
                 try
                 {
-                    _logger.LogInformation("Adding member {PrincipalId} with role {Role} to project {ProjectId}",
-                        member.PrincipalId, member.Role, entity.Status.ProjectId);
-
-                    // Check if member already exists
+                    _logger.LogInformation("Adding member {PrincipalId} with role {Role} to project {ProjectId}", string.IsNullOrWhiteSpace(member.PrincipalId) ? member.PrincipalName : member.PrincipalId, member.Role, entity.Status.ProjectId);
+                    var effectivePrincipalId = member.PrincipalId;
+                    if (string.IsNullOrWhiteSpace(effectivePrincipalId) && !string.IsNullOrWhiteSpace(member.PrincipalName))
+                    {
+                        effectivePrincipalId = await _rancherApi.GetPrincipalIdByNameAsync(member.PrincipalName, cancellationToken);
+                        if (string.IsNullOrWhiteSpace(effectivePrincipalId))
+                        {
+                            throw new InvalidOperationException($"Principal name '{member.PrincipalName}' could not be resolved.");
+                        }
+                    }
                     var existingMembers = await _rancherApi.GetProjectMembersAsync(entity.Status.ProjectId!, cancellationToken);
-                    var existingMember = existingMembers.FirstOrDefault(m =>
-                        (m.UserPrincipalId == member.PrincipalId || m.GroupPrincipalId == member.PrincipalId) &&
-                        m.RoleTemplateId == member.Role);
-
+                    var existingMember = existingMembers.FirstOrDefault(m => (m.UserPrincipalId == effectivePrincipalId || m.GroupPrincipalId == effectivePrincipalId) && m.RoleTemplateId == member.Role);
                     if (existingMember == null)
                     {
-                        await _rancherApi.CreateProjectMemberAsync(
-                            entity.Status.ProjectId!,
-                            member.PrincipalId,
-                            member.Role,
-                            cancellationToken);
+                        await _rancherApi.CreateProjectMemberAsync(entity.Status.ProjectId!, effectivePrincipalId!, member.Role, cancellationToken);
                         MetricsService.MembersAdded.Inc();
-                        await _eventService.CreateEventAsync(entity, "MemberAdded", $"Added member: {member.PrincipalId} with role: {member.Role}", "Normal", cancellationToken);
+                        await _eventService.CreateEventAsync(entity, "MemberAdded", $"Added member: {(member.PrincipalName ?? effectivePrincipalId)} with role: {member.Role}", "Normal", cancellationToken);
                     }
-
-                    entity.Status.ConfiguredMembers.Add($"{member.PrincipalId}:{member.Role}");
+                    entity.Status.ConfiguredMembers.Add($"{effectivePrincipalId}:{member.Role}");
                     memberCount++;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to add member: {PrincipalId}", member.PrincipalId);
-                    await _eventService.CreateEventAsync(entity, "MemberAddFailed", $"Failed to add member: {member.PrincipalId} - {ex.Message}", "Warning", cancellationToken);
+                    var identifierType = string.IsNullOrWhiteSpace(member.PrincipalId) ? "name" : "id";
+                    var identifierValue = string.IsNullOrWhiteSpace(member.PrincipalId) ? member.PrincipalName : member.PrincipalId;
+                    _logger.LogError(ex, "Failed to add member by {IdentifierType}: {Identifier}", identifierType, identifierValue);
+                    await _eventService.CreateEventAsync(entity, "MemberAddFailed", $"Failed to add member: {(member.PrincipalName ?? member.PrincipalId)} - {ex.Message}", "Warning", cancellationToken);
                     MetricsService.RecordError("member_add_failed");
                 }
             }
             MetricsService.ActiveMembers.Set(memberCount);
 
-            // Update status
             entity.Status.Phase = "Ready";
             entity.Status.LastReconcileTime = DateTime.UtcNow;
             entity.Status.ErrorMessage = null;
-
             await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
             await _eventService.CreateEventAsync(entity, "ReconcileCompleted", "Successfully reconciled RancherProject", "Normal", cancellationToken);
             _logger.LogInformation("Successfully reconciled RancherProject: {Name}", entity.Metadata.Name);
-            
             success = true;
         }
         catch (Exception ex)
@@ -184,7 +167,6 @@ public class RancherProjectController : IEntityController<V1RancherProject>
             _logger.LogError(ex, "Error reconciling RancherProject: {Name}", entity.Metadata.Name);
             await _eventService.CreateEventAsync(entity, "ReconcileFailed", $"Reconciliation failed: {ex.Message}", "Warning", cancellationToken);
             MetricsService.RecordError("reconciliation_failed");
-            
             if (entity.Status != null)
             {
                 entity.Status.Phase = "Error";
@@ -207,14 +189,11 @@ public class RancherProjectController : IEntityController<V1RancherProject>
         {
             _logger.LogInformation("Deleting RancherProject: {Name}", entity.Metadata.Name);
             await _eventService.CreateEventAsync(entity, "DeletionStarted", "Starting deletion of RancherProject", "Normal", cancellationToken);
-
             if (string.IsNullOrEmpty(entity.Status?.ProjectId))
             {
                 _logger.LogWarning("No project ID found for entity {Name}, skipping deletion", entity.Metadata.Name);
                 return;
             }
-
-            // Delete namespaces
             if (!string.IsNullOrEmpty(entity.Status.ClusterId))
             {
                 foreach (var namespaceName in entity.Status.CreatedNamespaces)
@@ -234,12 +213,10 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                     }
                 }
             }
-
-            // Delete the project
             await _rancherApi.DeleteProjectAsync(entity.Status.ProjectId, cancellationToken);
             MetricsService.ProjectsDeleted.Inc();
             MetricsService.ActiveProjects.Dec();
-            await _eventService.CreateEventAsync(entity, "ProjectDeleted", $"Successfully deleted RancherProject", "Normal", cancellationToken);
+            await _eventService.CreateEventAsync(entity, "ProjectDeleted", "Successfully deleted RancherProject", "Normal", cancellationToken);
             _logger.LogInformation("Successfully deleted RancherProject: {Name}", entity.Metadata.Name);
         }
         catch (Exception ex)
@@ -250,3 +227,4 @@ public class RancherProjectController : IEntityController<V1RancherProject>
         }
     }
 }
+

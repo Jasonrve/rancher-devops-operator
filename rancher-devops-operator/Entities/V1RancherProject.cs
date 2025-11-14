@@ -47,6 +47,11 @@ public class V1RancherProject : CustomKubernetesEntity<V1RancherProject.RancherP
         public string PrincipalId { get; set; } = string.Empty;
 
         /// <summary>
+        /// Optional principal name to resolve to an ID if PrincipalId not provided
+        /// </summary>
+        public string? PrincipalName { get; set; }
+
+        /// <summary>
         /// Role to assign (e.g., "project-owner", "project-member")
         /// </summary>
         public string Role { get; set; } = string.Empty;

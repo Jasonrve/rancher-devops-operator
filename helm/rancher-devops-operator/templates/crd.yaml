@@ -48,12 +48,14 @@ spec:
                   items:
                     type: object
                     required:
-                      - principalId
                       - role
                     properties:
                       principalId:
                         type: string
                         description: Principal ID (user or group)
+                      principalName:
+                        type: string
+                        description: Optional principal name to resolve to an ID if principalId not provided
                       role:
                         type: string
                         description: Role to assign (e.g., "project-owner", "project-member")

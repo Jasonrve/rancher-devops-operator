@@ -16,6 +16,8 @@ namespace rancher_devops_operator;
 [JsonSerializable(typeof(RancherProjectRoleBinding))]
 [JsonSerializable(typeof(RancherProjectRoleBindingList))]
 [JsonSerializable(typeof(RancherProjectRoleBindingRequest))]
+[JsonSerializable(typeof(RancherPrincipal))]
+[JsonSerializable(typeof(RancherPrincipalList))]
 [JsonSerializable(typeof(LoginRequest))]
 [JsonSerializable(typeof(LoginResponse))]
 [JsonSourceGenerationOptions(WriteIndented = false, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

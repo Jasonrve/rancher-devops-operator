@@ -157,3 +157,21 @@ public class RancherProjectRoleBindingList
     [JsonPropertyName("data")]
     public List<RancherProjectRoleBinding> Data { get; set; } = new();
 }
+
+public class RancherPrincipal
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("principalType")]
+    public string PrincipalType { get; set; } = string.Empty;
+}
+
+public class RancherPrincipalList
+{
+    [JsonPropertyName("data")]
+    public List<RancherPrincipal> Data { get; set; } = new();
+}
