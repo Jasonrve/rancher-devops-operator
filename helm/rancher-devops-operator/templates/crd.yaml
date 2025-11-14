@@ -59,6 +59,22 @@ spec:
                       role:
                         type: string
                         description: Role to assign (e.g., "project-owner", "project-member")
+                managementPolicies:
+                  type: array
+                  description: >-
+                    Crossplane-like management policies controlling which actions the
+                    operator may take. Supported values: "Observe", "Create", "Delete".
+                    When omitted, defaults to ["Observe","Create","Delete"].
+                  default:
+                    - Observe
+                    - Create
+                    - Delete
+                  items:
+                    type: string
+                    enum:
+                      - Observe
+                      - Create
+                      - Delete
                 resourceQuota:
                   type: object
                   description: Resource quotas for the project

@@ -32,6 +32,12 @@ public class RancherProjectController : IEntityController<V1RancherProject>
     {
         var stopwatch = Stopwatch.StartNew();
         var success = false;
+        bool Allows(string name) => (entity.Spec.ManagementPolicies == null || entity.Spec.ManagementPolicies.Count == 0)
+            ? true
+            : entity.Spec.ManagementPolicies.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase));
+        var allowCreate = Allows("Create");
+        var allowDelete = Allows("Delete");
+        var allowObserve = Allows("Observe");
 
         try
         {
@@ -61,6 +67,14 @@ public class RancherProjectController : IEntityController<V1RancherProject>
             var existingProject = await _rancherApi.GetProjectByNameAsync(clusterId, projectName, cancellationToken);
             if (existingProject == null)
             {
+                if (!allowCreate)
+                {
+                    _logger.LogInformation("Project {ProjectName} does not exist and Create is not permitted by managementPolicies.", projectName);
+                    entity.Status.Phase = "Observed";
+                    await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
+                    return;
+                }
+
                 _logger.LogInformation("Creating new Rancher project: {ProjectName}", projectName);
                 await _eventService.CreateEventAsync(entity, "CreatingProject", $"Creating Rancher project: {projectName}", "Normal", cancellationToken);
                 var newProject = await _rancherApi.CreateProjectAsync(clusterId, projectName, entity.Spec.Description, cancellationToken);
@@ -74,6 +88,7 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                     return;
                 }
                 entity.Status.ProjectId = newProject.Id;
+                entity.Status.Phase = "Created";
                 MetricsService.ProjectsCreated.Inc();
                 MetricsService.ActiveProjects.Inc();
                 await _eventService.CreateEventAsync(entity, "ProjectCreated", $"Successfully created Rancher project: {projectName} (ID: {newProject.Id})", "Normal", cancellationToken);
@@ -82,6 +97,7 @@ public class RancherProjectController : IEntityController<V1RancherProject>
             {
                 _logger.LogInformation("Found existing Rancher project: {ProjectId}", existingProject.Id);
                 entity.Status.ProjectId = existingProject.Id;
+                entity.Status.Phase = "Observed";
                 await _eventService.CreateEventAsync(entity, "ProjectFound", $"Using existing Rancher project: {projectName} (ID: {existingProject.Id})", "Normal", cancellationToken);
             }
 
@@ -95,7 +111,7 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                     _logger.LogInformation("Creating namespace: {Namespace} in project {ProjectId}", namespaceName, entity.Status.ProjectId);
                     var existingNamespaces = await _rancherApi.GetProjectNamespacesAsync(entity.Status.ProjectId!, cancellationToken);
                     var existingNs = existingNamespaces.FirstOrDefault(ns => ns.Name.Equals(namespaceName, StringComparison.OrdinalIgnoreCase));
-                    if (existingNs == null)
+                    if (existingNs == null && allowCreate)
                     {
                         await _rancherApi.CreateNamespaceAsync(entity.Status.ProjectId!, namespaceName, cancellationToken);
                         MetricsService.NamespacesCreated.Inc();
@@ -134,7 +150,7 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                     }
                     var existingMembers = await _rancherApi.GetProjectMembersAsync(entity.Status.ProjectId!, cancellationToken);
                     var existingMember = existingMembers.FirstOrDefault(m => (m.UserPrincipalId == effectivePrincipalId || m.GroupPrincipalId == effectivePrincipalId) && m.RoleTemplateId == member.Role);
-                    if (existingMember == null)
+                    if (existingMember == null && allowCreate)
                     {
                         await _rancherApi.CreateProjectMemberAsync(entity.Status.ProjectId!, effectivePrincipalId!, member.Role, cancellationToken);
                         MetricsService.MembersAdded.Inc();
@@ -154,7 +170,6 @@ public class RancherProjectController : IEntityController<V1RancherProject>
             }
             MetricsService.ActiveMembers.Set(memberCount);
 
-            entity.Status.Phase = "Ready";
             entity.Status.LastReconcileTime = DateTime.UtcNow;
             entity.Status.ErrorMessage = null;
             await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
@@ -189,6 +204,16 @@ public class RancherProjectController : IEntityController<V1RancherProject>
         {
             _logger.LogInformation("Deleting RancherProject: {Name}", entity.Metadata.Name);
             await _eventService.CreateEventAsync(entity, "DeletionStarted", "Starting deletion of RancherProject", "Normal", cancellationToken);
+            bool Allows(string name) => (entity.Spec.ManagementPolicies == null || entity.Spec.ManagementPolicies.Count == 0)
+                ? true
+                : entity.Spec.ManagementPolicies.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase));
+            var allowDelete = Allows("Delete");
+
+            if (!allowDelete)
+            {
+                _logger.LogInformation("managementPolicies does not include Delete; skipping deletion for {Name}", entity.Metadata.Name);
+                return;
+            }
             if (string.IsNullOrEmpty(entity.Status?.ProjectId))
             {
                 _logger.LogWarning("No project ID found for entity {Name}, skipping deletion", entity.Metadata.Name);

@@ -3,6 +3,11 @@ kind: RancherProject
 metadata:
   name: my-dev-project
 spec:
+  # Crossplane-like management policies. Omit for default [Observe, Create, Delete].
+  # To prevent deletions (create-only), use [Observe, Create].
+  managementPolicies:
+    - Observe
+    - Create
   # Name of the Rancher cluster (not the cluster ID)
   clusterName: "local"
   

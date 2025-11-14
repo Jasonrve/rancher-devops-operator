@@ -37,6 +37,12 @@ public class V1RancherProject : CustomKubernetesEntity<V1RancherProject.RancherP
         /// Resource quotas for the project (optional)
         /// </summary>
         public ResourceQuota? ResourceQuota { get; set; }
+
+        /// <summary>
+        /// Management policies controlling allowed actions (e.g., "Observe", "Create", "Delete").
+        /// If omitted, defaults to ["Observe","Create","Delete"].
+        /// </summary>
+        public List<string> ManagementPolicies { get; set; } = new();
     }
 
     public class ProjectMember
