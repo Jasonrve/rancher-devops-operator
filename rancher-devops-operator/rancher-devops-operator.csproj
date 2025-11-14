@@ -20,7 +20,8 @@
         <StripSymbols>true</StripSymbols>
         <EventSourceSupport>false</EventSourceSupport>
         <UseSystemResourceKeys>true</UseSystemResourceKeys>
-        <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
+        <!-- Enable complete type metadata to support System.Text.Json deserialization of Kubernetes watch events under NativeAOT -->
+        <IlcGenerateCompleteTypeMetadata>true</IlcGenerateCompleteTypeMetadata>
         <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
         <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
 
