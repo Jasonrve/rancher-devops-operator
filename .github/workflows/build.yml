@@ -23,6 +23,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
       digest: ${{ steps.build.outputs.digest }}
