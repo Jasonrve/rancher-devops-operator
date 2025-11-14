@@ -22,8 +22,8 @@ Replace `your-org` with your actual GitHub organization/username in:
    ```
 
 4. **Update links in badges**
-   - Actions link: `https://github.com/your-org/rancher-devops-operator/actions`
-   - Releases link: `https://github.com/your-org/rancher-devops-operator/releases/latest`
+   - Actions link: `https://github.com/Jasonrve/rancher-devops-operator/actions`
+   - Releases link: `https://github.com/Jasonrve/rancher-devops-operator/releases/latest`
    - GHCR link: `https://ghcr.io/your-org/rancher-devops-operator`
 
 ## Static Badges (Already Correct)

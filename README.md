@@ -1,19 +1,21 @@
-<div align="center" width="100%">
-  <img src="./resources/images/project-icon.png" width="128" alt="Rancher DevOps Operator" />
-</div>
+<p align="center">
+  <img src="resources/images/project-icon.png" width="128" alt="Rancher DevOps Operator" />
+  <br/>
+  <img src="https://img.shields.io/badge/status-UNDER_HEAVY_DEVELOPMENT-orange?style=for-the-badge" alt="Project Status: Under Heavy Development" />
+  <br/>
+</p>
 
 # Rancher DevOps Operator
 
 <div align="center" width="100%">
     <p>
-        <a href="https://github.com/your-org/rancher-devops-operator/actions"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/your-org/rancher-devops-operator/build.yml?style=flat&logo=github&link=https%3A%2F%2Fgithub.com%2Fyour-org%2Francher-devops-operator%2Factions"></a>
-        <a href="https://github.com/your-org/rancher-devops-operator/releases/latest"><img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/your-org/rancher-devops-operator?logo=github&label=latest"></a>
+        <a href="https://github.com/Jasonrve/rancher-devops-operator/actions"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/your-org/rancher-devops-operator/build.yml?style=flat&logo=github&link=https%3A%2F%2Fgithub.com%2Fyour-org%2Francher-devops-operator%2Factions"></a>
+        <a href="https://github.com/Jasonrve/rancher-devops-operator/releases/latest"><img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/your-org/rancher-devops-operator?logo=github&label=latest"></a>
         <a href="https://ghcr.io/your-org/rancher-devops-operator"><img alt="GHCR Tag" src="https://img.shields.io/github/v/tag/your-org/rancher-devops-operator?logo=docker&logoColor=white&label=GHCR"></a>
         <img src="https://img.shields.io/badge/Docker-arm64-blue?logo=docker&logoColor=white" alt="Docker arm64 Support Badge">
         <img src="https://img.shields.io/badge/Docker-amd64-blue?logo=docker&logoColor=white" alt="Docker amd64 Support Badge">
         <img src="https://img.shields.io/badge/container_size-24.7mb-green" alt="Container Size Badge">
         <img src="https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 9 Badge">
-        <img src="https://img.shields.io/badge/AOT-Native-purple?logo=dotnet&logoColor=white" alt="Native AOT Badge">
     </p>
 </div>
 
@@ -49,7 +51,7 @@ See [AUTHENTICATION.md](AUTHENTICATION.md) for detailed authentication setup gui
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-org/rancher-devops-operator.git
+git clone https://github.com/Jasonrve/rancher-devops-operator.git
 cd rancher-devops-operator
 ```
 
