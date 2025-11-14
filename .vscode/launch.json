@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": ".NET Core Launch (console)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/rancher-devops-operator/bin/Debug/net9.0/rancher-devops-operator.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/rancher-devops-operator",
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "Rancher__Url": "https://rancher.local",
+        "Rancher__Token": "YOUR_RANCHER_TOKEN_HERE",
+        "Rancher__AllowInsecureSsl": "true"
+      }
+    },
+    {
+      "name": ".NET Core Attach",
+      "type": "coreclr",
+      "request": "attach"
+    }
+  ]
+}

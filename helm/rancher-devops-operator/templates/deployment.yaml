@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rancher-devops-operator.fullname" . }}
+  labels:
+    {{- include "rancher-devops-operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "rancher-devops-operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: operator
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "rancher-devops-operator.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "rancher-devops-operator.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: operator
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: Rancher__Url
+              value: {{ .Values.rancher.url | quote }}
+            {{- if or .Values.rancher.token .Values.rancher.existingSecret }}
+            - name: Rancher__Token
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rancher.existingSecret | default (printf "%s-rancher" (include "rancher-devops-operator.fullname" .)) }}
+                  key: {{ .Values.rancher.existingSecretTokenKey }}
+                  optional: true
+            {{- end }}
+            {{- if or .Values.rancher.username .Values.rancher.existingSecret }}
+            - name: Rancher__Username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rancher.existingSecret | default (printf "%s-rancher" (include "rancher-devops-operator.fullname" .)) }}
+                  key: {{ .Values.rancher.existingSecretUsernameKey }}
+                  optional: true
+            {{- end }}
+            {{- if or .Values.rancher.password .Values.rancher.existingSecret }}
+            - name: Rancher__Password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rancher.existingSecret | default (printf "%s-rancher" (include "rancher-devops-operator.fullname" .)) }}
+                  key: {{ .Values.rancher.existingSecretPasswordKey }}
+                  optional: true
+            {{- end }}
+            - name: Rancher__AllowInsecureSsl
+              value: {{ .Values.rancher.allowInsecureSsl | quote }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,53 @@
+using KubeOps.Operator;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Prometheus;
+using rancher_devops_operator.Services;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+// Add HttpClient for Rancher API
+builder.Services.AddHttpClient("Rancher")
+    .ConfigurePrimaryHttpMessageHandler(() =>
+    {
+        var handler = new HttpClientHandler();
+        var allowInsecureSsl = builder.Configuration.GetValue<bool>("Rancher:AllowInsecureSsl");
+        if (allowInsecureSsl)
+        {
+            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+        }
+        return handler;
+    });
+
+// Add separate HttpClient for authentication (without Bearer token initially)
+builder.Services.AddHttpClient("RancherAuth")
+    .ConfigurePrimaryHttpMessageHandler(() =>
+    {
+        var handler = new HttpClientHandler();
+        var allowInsecureSsl = builder.Configuration.GetValue<bool>("Rancher:AllowInsecureSsl");
+        if (allowInsecureSsl)
+        {
+            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+        }
+        return handler;
+    });
+
+// Register Rancher services
+builder.Services.AddSingleton<IRancherAuthService, RancherAuthService>();
+builder.Services.AddSingleton<IRancherApiService, RancherApiService>();
+builder.Services.AddSingleton<IKubernetesEventService, KubernetesEventService>();
+
+// Add Kubernetes operator
+builder.Services
+    .AddKubernetesOperator()
+    .RegisterComponents();
+
+var host = builder.Build();
+
+// Start Prometheus metrics server
+var metricsServer = new KestrelMetricServer(port: 9090);
+metricsServer.Start();
+
+await host.RunAsync();
