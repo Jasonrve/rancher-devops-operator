@@ -9,8 +9,8 @@
         <IsPackable>false</IsPackable>
         <GenerateDocumentationFile>false</GenerateDocumentationFile>
         
-        <!-- AOT Configuration -->
-        <PublishAot>true</PublishAot>
+        <!-- Disable NativeAOT (fallback due to Kubernetes watch deserialization issues) -->
+        <PublishAot>false</PublishAot>
         <InvariantGlobalization>false</InvariantGlobalization>
         <IlcOptimizationPreference>Size</IlcOptimizationPreference>
         <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
@@ -24,6 +24,8 @@
         <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
         <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
         <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+        <!-- Preserve broader reflection data for JSON generic types -->
+        <IlcGenerateRuntimeReflectionData>true</IlcGenerateRuntimeReflectionData>
 
         <!-- Reduce noise from third-party libraries that aren't fully annotated -->
         <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
