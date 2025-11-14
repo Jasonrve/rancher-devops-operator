@@ -2,8 +2,8 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/your-org/rancher-devops-operator
-  pullPolicy: IfNotPresent
+  repository: ghcr.io/Jasonrve/rancher-devops-operator
+  pullPolicy: Always
   tag: "latest"
 
 imagePullSecrets: []
