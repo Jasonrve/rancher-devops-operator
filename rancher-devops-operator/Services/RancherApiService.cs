@@ -165,6 +165,12 @@ public class RancherApiService : IRancherApiService
         try
         {
             _logger.LogInformation("Creating namespace {NamespaceName} in project {ProjectId}", namespaceName, projectId);
+            // Derive clusterId from compound projectId (format: clusterId:projectId)
+            var clusterIdPart = projectId.Contains(':') ? projectId.Split(':')[0] : string.Empty;
+            if (string.IsNullOrEmpty(clusterIdPart))
+            {
+                _logger.LogWarning("Could not derive clusterId from projectId {ProjectId}", projectId);
+            }
 
             var namespaceRequest = new RancherNamespaceRequest
             {
@@ -175,7 +181,8 @@ public class RancherApiService : IRancherApiService
             var json = JsonSerializer.Serialize(namespaceRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync("/v3/cluster/namespaces", content, cancellationToken);
+            // Correct Rancher endpoint: /v3/clusters/{clusterId}/namespaces
+            var response = await _httpClient.PostAsync($"/v3/clusters/{clusterIdPart}/namespaces", content, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -197,7 +204,10 @@ public class RancherApiService : IRancherApiService
         try
         {
             _logger.LogInformation("Fetching namespaces for project {ProjectId}", projectId);
-            var response = await _httpClient.GetAsync($"/v3/cluster/namespaces?projectId={projectId}", cancellationToken);
+            var clusterIdPart = projectId.Contains(':') ? projectId.Split(':')[0] : string.Empty;
+            var encodedProjectId = Uri.EscapeDataString(projectId);
+            // Correct Rancher list endpoint includes cluster path and projectId filter
+            var response = await _httpClient.GetAsync($"/v3/clusters/{clusterIdPart}/namespaces?projectId={encodedProjectId}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
