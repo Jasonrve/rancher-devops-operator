@@ -88,7 +88,7 @@ public class RancherProjectController : IEntityController<V1RancherProject>
                     return;
                 }
                 entity.Status.ProjectId = newProject.Id;
-                entity.Status.Phase = "Created";
+                entity.Status.Phase = "Active";
                 MetricsService.ProjectsCreated.Inc();
                 MetricsService.ActiveProjects.Inc();
                 await _eventService.CreateEventAsync(entity, "ProjectCreated", $"Successfully created Rancher project: {projectName} (ID: {newProject.Id})", "Normal", cancellationToken);
