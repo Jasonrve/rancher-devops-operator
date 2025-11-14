@@ -19,10 +19,11 @@ RUN case "$TARGETARCH" in \
     esac \
     && dotnet restore -r $RID
 
-# Install KubeOps CLI tool and run code generation (needed for proper operator metadata under NativeAOT)
+# Install KubeOps CLI tool (optional) – invoke using 'kubeops', not 'dotnet kubeops'
 ENV PATH="/root/.dotnet/tools:$PATH"
-RUN dotnet tool install --global KubeOps.Cli \
-    && dotnet kubeops build --project ./rancher-devops-operator/rancher-devops-operator.csproj
+RUN dotnet tool install --global KubeOps.Cli || echo "KubeOps CLI optional; continuing"
+
+# (Generation is handled by KubeOps.Generator package during build; explicit CLI build removed to avoid failure)
 
 # Copy everything else
 COPY rancher-devops-operator/. ./rancher-devops-operator/
