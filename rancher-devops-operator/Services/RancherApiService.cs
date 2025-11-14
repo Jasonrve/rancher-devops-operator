@@ -181,9 +181,14 @@ public class RancherApiService : IRancherApiService
             var json = JsonSerializer.Serialize(namespaceRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            // Correct Rancher endpoint: /v3/clusters/{clusterId}/namespaces
+            // Rancher endpoint: /v3/clusters/{clusterId}/namespaces
             var response = await _httpClient.PostAsync($"/v3/clusters/{clusterIdPart}/namespaces", content, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Namespace create failed for {NamespaceName} (project {ProjectId}) status {Status}: {Body}", namespaceName, projectId, (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
 
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
             var ns = JsonSerializer.Deserialize(responseContent, RancherJsonSerializerContext.Default.RancherNamespace);
@@ -208,7 +213,12 @@ public class RancherApiService : IRancherApiService
             var encodedProjectId = Uri.EscapeDataString(projectId);
             // Correct Rancher list endpoint includes cluster path and projectId filter
             var response = await _httpClient.GetAsync($"/v3/clusters/{clusterIdPart}/namespaces?projectId={encodedProjectId}", cancellationToken);
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Namespace list failed for project {ProjectId} status {Status}: {Body}", projectId, (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken);
             var namespaceList = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherNamespaceList);
