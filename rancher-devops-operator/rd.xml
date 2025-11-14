@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Directives>
   <!-- Preserve metadata needed for Kubernetes watch event JSON deserialization under NativeAOT -->
-  <!-- Broaden preservation for KubernetesClient: allow dynamic access to all public types to fix WatchEvent generic instantiation issues -->
-  <Assembly Name="KubernetesClient" Dynamic="Required Public" />
-  <!-- Explicit generic watcher constructs (defensive) -->
+  <!-- Broaden preservation for KubernetesClient: allow dynamic access to *all* types to fix WatchEvent generic instantiation issues -->
+  <Assembly Name="KubernetesClient" Dynamic="Required All" />
+  <!-- Explicit closed generic watcher constructs for V1RancherProject (defensive) -->
   <Assembly Name="KubernetesClient">
     <Type Name="k8s.Watcher`1" Dynamic="Required All" />
     <Type Name="k8s.Watcher`1+WatchEvent" Dynamic="Required All" />
+    <!-- Closed generic for our CRD: k8s.Watcher<V1RancherProject> and nested WatchEvent -->
+    <Type Name="k8s.Watcher`1[[rancher_devops_operator.Entities.V1RancherProject, rancher-devops-operator]]" Dynamic="Required All" />
+    <Type Name="k8s.Watcher`1+WatchEvent[[rancher_devops_operator.Entities.V1RancherProject, rancher-devops-operator]]" Dynamic="Required All" />
     <Type Name="k8s.KubernetesObject" Dynamic="Required All" />
   </Assembly>
   <Assembly Name="KubeOps.KubernetesClient">
