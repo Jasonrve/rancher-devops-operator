@@ -29,6 +29,8 @@
         <SuppressAotAnalysisWarnings>true</SuppressAotAnalysisWarnings>
     </PropertyGroup>
 
+    <!-- Keep NativeAOT enabled for all RIDs (arm64 will be built natively in CI) -->
+
     <ItemGroup>
       <PackageReference Include="KubeOps.Abstractions" Version="9.11.9" />
       <PackageReference Include="KubeOps.Generator" Version="9.11.9">

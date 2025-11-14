@@ -4,7 +4,7 @@ ARG TARGETARCH
 WORKDIR /source
 
 # Install native AOT prerequisites
-RUN apk add --no-cache clang lld build-base zlib-dev
+RUN apk add --no-cache clang lld build-base musl-dev zlib-dev
 
 # Copy project files
 COPY rancher-devops-operator/*.csproj ./rancher-devops-operator/
@@ -44,7 +44,8 @@ WORKDIR /app
 RUN apk add --no-cache \
     libstdc++ \
     libgcc \
-    zlib
+    zlib \
+    icu-libs
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
