@@ -1,0 +1,29 @@
+# Ignore build outputs
+**/bin/
+**/obj/
+*.user
+*.suo
+*.cache
+
+# Ignore IDE files
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore Docker files (but keep Dockerfile)
+.dockerignore
+
+# Ignore Helm chart outputs
+helm/*/charts/
+helm/*/*.tgz
+
+# Ignore temporary files
+*.tmp
+*.log

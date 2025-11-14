@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net9.0</TargetFramework>
+        <LangVersion>12.0</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>true</ImplicitUsings>
+        <IsPackable>false</IsPackable>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        
+        <!-- Disable NativeAOT (fallback due to Kubernetes watch deserialization issues) -->
+        <PublishAot>false</PublishAot>
+        <InvariantGlobalization>false</InvariantGlobalization>
+        <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+        <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+        <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+        
+        <!-- Size optimization settings -->
+        <StripSymbols>true</StripSymbols>
+        <EventSourceSupport>false</EventSourceSupport>
+        <UseSystemResourceKeys>true</UseSystemResourceKeys>
+        <!-- Revert full type metadata; will use targeted preservation instead to avoid ilcompiler InvalidCastException -->
+        <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
+        <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+        <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+        <!-- Preserve broader reflection data for JSON generic types -->
+        <IlcGenerateRuntimeReflectionData>true</IlcGenerateRuntimeReflectionData>
+
+        <!-- Reduce noise from third-party libraries that aren't fully annotated -->
+        <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+        <SuppressAotAnalysisWarnings>true</SuppressAotAnalysisWarnings>
+        <!-- Root descriptor for NativeAOT to preserve specific reflection metadata -->
+        <IlcRootDescriptors>rd.xml</IlcRootDescriptors>
+    </PropertyGroup>
+
+    <!-- Keep NativeAOT enabled for all RIDs (arm64 will be built natively in CI) -->
+
+    <ItemGroup>
+      <PackageReference Include="KubeOps.Abstractions" Version="9.11.9" />
+      <PackageReference Include="KubeOps.Generator" Version="9.11.9">
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        <PrivateAssets>all</PrivateAssets>
+      </PackageReference>
+      <PackageReference Include="KubeOps.Operator" Version="9.11.9" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+      <PackageReference Include="prometheus-net" Version="8.2.1" />
+      <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
+      <PackageReference Include="System.Text.Json" Version="10.0.0" />
+    </ItemGroup>
+
+</Project>

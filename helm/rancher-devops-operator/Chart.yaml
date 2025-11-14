@@ -1,0 +1,13 @@
+apiVersion: v2
+name: rancher-devops-operator
+description: A Kubernetes operator for managing Rancher projects and namespaces
+type: application
+version: 0.1.2
+appVersion: "0.1.2"
+keywords:
+  - rancher
+  - operator
+  - devops
+  - kubernetes
+maintainers:
+  - name: DevOps Team

@@ -1,0 +1,133 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: rancherprojects.rancher.devops.io
+  labels:
+    {{- include "rancher-devops-operator.labels" . | nindent 4 }}
+spec:
+  group: rancher.devops.io
+  names:
+    kind: RancherProject
+    listKind: RancherProjectList
+    plural: rancherprojects
+    singular: rancherproject
+    shortNames:
+      - rp
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - clusterName
+                - displayName
+              properties:
+                clusterName:
+                  type: string
+                  description: Name of the Rancher cluster (not cluster ID)
+                displayName:
+                  type: string
+                  description: Display name for the Rancher project
+                description:
+                  type: string
+                  description: Description of the project
+                namespaces:
+                  type: array
+                  description: List of namespaces to create and associate with this project
+                  items:
+                    type: string
+                members:
+                  type: array
+                  description: Project members with their roles
+                  items:
+                    type: object
+                    required:
+                      - role
+                    properties:
+                      principalId:
+                        type: string
+                        description: Principal ID (user or group)
+                      principalName:
+                        type: string
+                        description: Optional principal name to resolve to an ID if principalId not provided
+                      role:
+                        type: string
+                        description: Role to assign (e.g., "project-owner", "project-member")
+                managementPolicies:
+                  type: array
+                  description: >-
+                    Crossplane-like management policies controlling which actions the
+                    operator may take. Supported values: "Observe", "Create", "Delete".
+                    When omitted, defaults to ["Observe","Create","Delete"].
+                  default:
+                    - Observe
+                    - Create
+                    - Delete
+                  items:
+                    type: string
+                    enum:
+                      - Observe
+                      - Create
+                      - Delete
+                resourceQuota:
+                  type: object
+                  description: Resource quotas for the project
+                  properties:
+                    limitsCpu:
+                      type: string
+                    limitsMemory:
+                      type: string
+                    requestsCpu:
+                      type: string
+                    requestsMemory:
+                      type: string
+            status:
+              type: object
+              properties:
+                projectId:
+                  type: string
+                  description: Rancher project ID (c-xxxxx:p-xxxxx)
+                clusterId:
+                  type: string
+                  description: Rancher cluster ID
+                phase:
+                  type: string
+                  description: Current phase of the resource
+                createdNamespaces:
+                  type: array
+                  description: List of created namespaces
+                  items:
+                    type: string
+                lastReconcileTime:
+                  type: string
+                  format: date-time
+                  description: Last reconciliation time
+                errorMessage:
+                  type: string
+                  description: Error message if any
+                configuredMembers:
+                  type: array
+                  description: List of configured members
+                  items:
+                    type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Cluster
+          type: string
+          jsonPath: .spec.clusterName
+        - name: Project ID
+          type: string
+          jsonPath: .status.projectId
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

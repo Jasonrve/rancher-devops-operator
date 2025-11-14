@@ -1,0 +1,59 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rancher DevOps Operator Logo">
+  <!-- Combined Rancher + Kubernetes minimal operator mark -->
+  <defs>
+    <!-- Shared palette -->
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#326CE5" />
+      <stop offset="100%" stop-color="#00A1E0" />
+    </linearGradient>
+    <linearGradient id="splitGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#326CE5" />
+      <stop offset="50%" stop-color="#326CE5" />
+      <stop offset="50%" stop-color="#00A1E0" />
+      <stop offset="100%" stop-color="#00A1E0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer ring conveying "operator" / control loop -->
+  <circle cx="64" cy="64" r="60" fill="none" stroke="url(#ringGrad)" stroke-width="6" stroke-linecap="round" />
+  <!-- Inner soft backdrop -->
+  <circle cx="64" cy="64" r="46" fill="#ffffff" fill-opacity="0.92" stroke="#E5F3FA" stroke-width="2" />
+
+  <!-- Left: Kubernetes (hex + helm spokes) -->
+  <g transform="translate(44,64)">
+    <path d="M0,-20 L17,-10 L17,10 L0,20 L-17,10 L-17,-10 Z" fill="#326CE5" stroke="#ffffff" stroke-width="2" />
+    <circle cx="0" cy="0" r="7" fill="#ffffff" />
+    <!-- 6 spokes -->
+    <line x1="0" y1="-14" x2="0" y2="-7" stroke="#326CE5" stroke-width="2" stroke-linecap="round" />
+    <line x1="0" y1="7" x2="0" y2="14" stroke="#326CE5" stroke-width="2" stroke-linecap="round" />
+    <line x1="-12" y1="-7" x2="-5" y2="-3" stroke="#326CE5" stroke-width="2" stroke-linecap="round" />
+    <line x1="5" y1="3" x2="12" y2="7" stroke="#326CE5" stroke-width="2" stroke-linecap="round" />
+    <line x1="-12" y1="7" x2="-5" y2="3" stroke="#326CE5" stroke-width="2" stroke-linecap="round" />
+    <line x1="5" y1="-3" x2="12" y2="-7" stroke="#326CE5" stroke-width="2" stroke-linecap="round" />
+  </g>
+
+  <!-- Right: Rancher (simplified angular cow head silhouette) -->
+  <g transform="translate(84,64)">
+    <!-- Cow head base -->
+    <path d="M -18,-12 L -10,-12 L -6,-18 L 6,-18 L 10,-12 L 18,-12 L 18,10 L -18,10 Z" fill="#00A1E0" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" />
+    <!-- Eyes -->
+    <circle cx="-5" cy="-4" r="3" fill="#ffffff" />
+    <circle cx="5" cy="-4" r="3" fill="#ffffff" />
+    <circle cx="-5" cy="-4" r="1.4" fill="#00A1E0" />
+    <circle cx="5" cy="-4" r="1.4" fill="#00A1E0" />
+    <!-- Snout detail -->
+    <rect x="-6" y="0" width="12" height="6" rx="2" fill="#ffffff" />
+    <circle cx="-2" cy="3" r="1.2" fill="#00A1E0" />
+    <circle cx="2" cy="3" r="1.2" fill="#00A1E0" />
+  </g>
+
+  <!-- Bridge / CRD concept: split pill connecting both sides -->
+  <g transform="translate(64,64)">
+    <rect x="-22" y="-6" width="44" height="12" rx="6" fill="url(#splitGrad)" stroke="#ffffff" stroke-width="2" />
+    <!-- Small infinity (DevOps) overlay -->
+    <path d="M -8,0 C -8,-4 -4,-6 0,-3 C 4,-6 8,-4 8,0 C 8,4 4,6 0,3 C -4,6 -8,4 -8,0 Z" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" />
+  </g>
+
+  <!-- Label (optional / subtle) -->
+  <text x="64" y="120" font-family="Verdana,Arial,sans-serif" font-size="11" font-weight="600" text-anchor="middle" fill="#326CE5" opacity="0.7">Rancher Operator</text>
+</svg>
