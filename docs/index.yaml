@@ -3,9 +3,9 @@ entries:
   rancher-devops-operator:
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2025-11-15T07:43:25.691043902Z"
+    created: "2025-11-15T07:46:59.962072839Z"
     description: A Kubernetes operator for managing Rancher projects and namespaces
-    digest: c01b2c8a44a1aad45097b85df2f6ba6d61862f315bf6df987d643c804d838623
+    digest: c4fda5867474dde11d007d8f1ab1ac729c2577ba5aef784feb93bbeb5b8a6f2f
     icon: https://raw.githubusercontent.com/Jasonrve/rancher-devops-operator/main/resources/images/project-icon-transparent.png
     keywords:
     - rancher
@@ -19,4 +19,4 @@ entries:
     urls:
     - https://Jasonrve.github.io/rancher-devops-operator/rancher-devops-operator-0.1.0.tgz
     version: 0.1.0
-generated: "2025-11-15T07:43:25.690410696Z"
+generated: "2025-11-15T07:46:59.96151988Z"
