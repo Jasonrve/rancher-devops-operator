@@ -1,0 +1,39 @@
+apiVersion: rancher.devops.io/v1
+kind: RancherProject
+metadata:
+  name: my-dev-project
+spec:
+  # Crossplane-like management policies. Omit for default [Observe, Create, Delete].
+  # To prevent deletions (create-only), use [Observe, Create].
+  managementPolicies:
+    - Observe
+    - Create
+  # Name of the Rancher cluster (not the cluster ID)
+  clusterName: "local"
+  
+  # Display name for the project in Rancher
+  displayName: "Development Project"
+  
+  # Optional description
+  description: "Development environment for my application"
+  
+  # Namespaces to create and link to this project
+  namespaces:
+    - dev-app
+    - dev-database
+    - dev-cache
+  
+  # Project members with their roles
+  members:
+    # You can specify either principalId directly OR principalName for lookup.
+    - principalName: "jdoe"  # Will be resolved to a principal ID
+      role: "project-owner"
+    - principalId: "local://user-def456"  # Direct ID still works
+      role: "project-member"
+  
+  # Optional resource quotas
+  resourceQuota:
+    limitsCpu: "10"
+    limitsMemory: "20Gi"
+    requestsCpu: "2"
+    requestsMemory: "4Gi"

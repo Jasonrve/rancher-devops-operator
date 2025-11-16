@@ -1,0 +1,15 @@
+# Rancher DevOps Operator
+
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Helm
+helm/*/charts/
+helm/*/*.tgz

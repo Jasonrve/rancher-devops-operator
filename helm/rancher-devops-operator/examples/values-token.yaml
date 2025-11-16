@@ -1,0 +1,27 @@
+# Example values for using API token authentication
+# This is the recommended approach for production
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/your-org/rancher-devops-operator
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+rancher:
+  # URL of your Rancher server
+  url: "https://rancher.example.com"
+  
+  # Static API token
+  token: "token-xxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  
+  # For self-signed certificates (dev/test only)
+  allowInsecureSsl: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
