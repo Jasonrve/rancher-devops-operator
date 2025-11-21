@@ -4,8 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., 0.1.4)'
+        description: 'Release version (e.g., 0.1.4 or 0.0.1-beta.0)'
         required: true
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 
 jobs:
@@ -82,4 +90,4 @@ jobs:
           name: Release ${{ github.event.inputs.version }}
           body: ${{ steps.changelog.outputs.changelog }}
           draft: false
-          prerelease: false
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
