@@ -5,7 +5,7 @@ using rancher_devops_operator.Services;
 
 namespace rancher_devops_operator;
 
-[JsonSerializable(typeof(V1RancherProject))]
+[JsonSerializable(typeof(V1Project))]
 [JsonSerializable(typeof(RancherClusterList))]
 [JsonSerializable(typeof(RancherCluster))]
 [JsonSerializable(typeof(RancherProject))]

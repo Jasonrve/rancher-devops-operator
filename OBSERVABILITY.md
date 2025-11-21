@@ -162,10 +162,10 @@ The operator creates Kubernetes events for important operations to provide visib
 | `ProjectCreated` | Successfully created Rancher project: name (ID: id) | New project created |
 | `NamespaceCreated` | Created namespace: name | Namespace created |
 | `MemberAdded` | Added member: principalId with role: role | Member added to project |
-| `ReconcileCompleted` | Successfully reconciled RancherProject | Reconciliation completed |
-| `DeletionStarted` | Starting deletion of RancherProject | Beginning of deletion |
+| `ReconcileCompleted` | Successfully reconciled Project | Reconciliation completed |
+| `DeletionStarted` | Starting deletion of Project | Beginning of deletion |
 | `NamespaceDeleted` | Deleted namespace: name | Namespace deleted |
-| `ProjectDeleted` | Successfully deleted RancherProject | Project deleted |
+| `ProjectDeleted` | Successfully deleted Project | Project deleted |
 
 #### Warning Events (type=Warning)
 
@@ -181,10 +181,10 @@ The operator creates Kubernetes events for important operations to provide visib
 
 ### Viewing Events
 
-#### For a specific RancherProject
+#### For a specific Project
 
 ```bash
-kubectl describe rancherproject my-project
+kubectl describe project my-project
 
 # Or view events directly
 kubectl get events --field-selector involvedObject.name=my-project
@@ -212,7 +212,7 @@ kubectl get events --field-selector type=Normal,source=rancher-devops-operator
 ### Example Event Output
 
 ```bash
-$ kubectl describe rancherproject my-project
+$ kubectl describe project my-project
 
 Events:
   Type    Reason              Age   From                        Message
@@ -223,7 +223,7 @@ Events:
   Normal  NamespaceCreated    2m    rancher-devops-operator     Created namespace: app-frontend
   Normal  NamespaceCreated    2m    rancher-devops-operator     Created namespace: app-backend
   Normal  MemberAdded         2m    rancher-devops-operator     Added member: local://user-abc123 with role: project-owner
-  Normal  ReconcileCompleted  2m    rancher-devops-operator     Successfully reconciled RancherProject
+  Normal  ReconcileCompleted  2m    rancher-devops-operator     Successfully reconciled Project
 ```
 
 ---
@@ -363,7 +363,7 @@ kubectl get events --field-selector type=Warning,source=rancher-devops-operator 
 curl http://localhost:9090/metrics | grep rancher_operator_reconciliation_duration
 
 # Check which resources are being reconciled
-kubectl get rancherprojects -o wide
+kubectl get projects -o wide
 ```
 
 ### Authentication Issues

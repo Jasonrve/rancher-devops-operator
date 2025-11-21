@@ -8,16 +8,16 @@ using rancher_devops_operator.Services;
 
 namespace rancher_devops_operator.Controller;
 
-[EntityRbac(typeof(V1RancherProject), Verbs = RbacVerb.All)]
-public class RancherProjectController : IEntityController<V1RancherProject>
+[EntityRbac(typeof(V1Project), Verbs = RbacVerb.All)]
+public class ProjectController : IEntityController<V1Project>
 {
-    private readonly ILogger<RancherProjectController> _logger;
+    private readonly ILogger<ProjectController> _logger;
     private readonly IRancherApiService _rancherApi;
     private readonly IKubernetesClient _kubernetesClient;
     private readonly IKubernetesEventService _eventService;
 
-    public RancherProjectController(
-        ILogger<RancherProjectController> logger,
+    public ProjectController(
+        ILogger<ProjectController> logger,
         IRancherApiService rancherApi,
         IKubernetesClient kubernetesClient,
         IKubernetesEventService eventService)
@@ -28,7 +28,7 @@ public class RancherProjectController : IEntityController<V1RancherProject>
         _eventService = eventService;
     }
 
-    public async Task ReconcileAsync(V1RancherProject entity, CancellationToken cancellationToken)
+    public async Task ReconcileAsync(V1Project entity, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         var success = false;
@@ -41,12 +41,12 @@ public class RancherProjectController : IEntityController<V1RancherProject>
 
         try
         {
-            _logger.LogInformation("Reconciling RancherProject: {Name}", entity.Metadata.Name);
+            _logger.LogInformation("Reconciling Project: {Name}", entity.Metadata.Name);
             await _eventService.CreateEventAsync(entity, "ReconcileStarted", "Starting reconciliation", "Normal", cancellationToken);
 
             if (entity.Status == null)
             {
-                entity.Status = new V1RancherProject.RancherProjectStatus();
+                entity.Status = new V1Project.ProjectStatus();
             }
 
             var clusterId = await _rancherApi.GetClusterIdByNameAsync(entity.Spec.ClusterName, cancellationToken);
@@ -194,13 +194,13 @@ public class RancherProjectController : IEntityController<V1RancherProject>
             entity.Status.LastReconcileTime = DateTime.UtcNow;
             entity.Status.ErrorMessage = null;
             await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
-            await _eventService.CreateEventAsync(entity, "ReconcileCompleted", "Successfully reconciled RancherProject", "Normal", cancellationToken);
-            _logger.LogInformation("Successfully reconciled RancherProject: {Name}", entity.Metadata.Name);
+            await _eventService.CreateEventAsync(entity, "ReconcileCompleted", "Successfully reconciled Project", "Normal", cancellationToken);
+            _logger.LogInformation("Successfully reconciled Project: {Name}", entity.Metadata.Name);
             success = true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reconciling RancherProject: {Name}", entity.Metadata.Name);
+            _logger.LogError(ex, "Error reconciling Project: {Name}", entity.Metadata.Name);
             await _eventService.CreateEventAsync(entity, "ReconcileFailed", $"Reconciliation failed: {ex.Message}", "Warning", cancellationToken);
             MetricsService.RecordError("reconciliation_failed");
             if (entity.Status != null)
@@ -219,12 +219,12 @@ public class RancherProjectController : IEntityController<V1RancherProject>
         }
     }
 
-    public async Task DeletedAsync(V1RancherProject entity, CancellationToken cancellationToken)
+    public async Task DeletedAsync(V1Project entity, CancellationToken cancellationToken)
     {
         try
         {
-            _logger.LogInformation("Deleting RancherProject: {Name}", entity.Metadata.Name);
-            await _eventService.CreateEventAsync(entity, "DeletionStarted", "Starting deletion of RancherProject", "Normal", cancellationToken);
+            _logger.LogInformation("Deleting Project: {Name}", entity.Metadata.Name);
+            await _eventService.CreateEventAsync(entity, "DeletionStarted", "Starting deletion of Project", "Normal", cancellationToken);
             bool Allows(string name) => (entity.Spec.ManagementPolicies == null || entity.Spec.ManagementPolicies.Count == 0)
                 ? true
                 : entity.Spec.ManagementPolicies.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase));
@@ -262,12 +262,12 @@ public class RancherProjectController : IEntityController<V1RancherProject>
             await _rancherApi.DeleteProjectAsync(entity.Status.ProjectId, cancellationToken);
             MetricsService.ProjectsDeleted.Inc();
             MetricsService.ActiveProjects.Dec();
-            await _eventService.CreateEventAsync(entity, "ProjectDeleted", "Successfully deleted RancherProject", "Normal", cancellationToken);
-            _logger.LogInformation("Successfully deleted RancherProject: {Name}", entity.Metadata.Name);
+            await _eventService.CreateEventAsync(entity, "ProjectDeleted", "Successfully deleted Project", "Normal", cancellationToken);
+            _logger.LogInformation("Successfully deleted Project: {Name}", entity.Metadata.Name);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting RancherProject: {Name}", entity.Metadata.Name);
+            _logger.LogError(ex, "Error deleting Project: {Name}", entity.Metadata.Name);
             await _eventService.CreateEventAsync(entity, "DeletionFailed", $"Deletion failed: {ex.Message}", "Warning", cancellationToken);
             MetricsService.RecordError("deletion_failed");
         }

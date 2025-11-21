@@ -3,10 +3,11 @@ using KubeOps.Abstractions.Entities;
 
 namespace rancher_devops_operator.Entities;
 
-[KubernetesEntity(Group = "rancher.devops.io", ApiVersion = "v1", Kind = "RancherProject")]
-public class V1RancherProject : CustomKubernetesEntity<V1RancherProject.RancherProjectSpec, V1RancherProject.RancherProjectStatus>
+// Renamed from V1RancherProject to V1Project; Kind changed to Project.
+[KubernetesEntity(Group = "rancher.devops.io", ApiVersion = "v1", Kind = "Project")]
+public class V1Project : CustomKubernetesEntity<V1Project.ProjectSpec, V1Project.ProjectStatus>
 {
-    public class RancherProjectSpec
+    public class ProjectSpec
     {
         /// <summary>
         /// Name of the Rancher cluster (not cluster ID)
@@ -71,7 +72,7 @@ public class V1RancherProject : CustomKubernetesEntity<V1RancherProject.RancherP
         public string? RequestsMemory { get; set; }
     }
 
-    public class RancherProjectStatus
+    public class ProjectStatus
     {
         /// <summary>
         /// Rancher project ID (c-xxxxx:p-xxxxx)

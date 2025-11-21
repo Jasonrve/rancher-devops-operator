@@ -1,5 +1,5 @@
 apiVersion: rancher.devops.io/v1
-kind: RancherProject
+kind: Project
 metadata:
   name: my-dev-project
 spec:

@@ -124,11 +124,11 @@ helm install rancher-devops-operator ./helm/rancher-devops-operator \
 
 ### Creating a Rancher Project
 
-Create a RancherProject custom resource:
+Create a Project custom resource:
 
 ```yaml
 apiVersion: rancher.devops.io/v1
-kind: RancherProject
+kind: Project
 metadata:
   name: my-project
 spec:
@@ -162,8 +162,8 @@ kubectl apply -f rancher-project.yaml
 ### Checking Status
 
 ```bash
-kubectl get rancherprojects
-kubectl describe rancherproject my-project
+kubectl get projects
+kubectl describe project my-project
 ```
 
 ### Common Roles
@@ -249,8 +249,8 @@ dotnet test
 
 The operator consists of:
 
-- **V1RancherProject CRD**: Defines the desired state of Rancher projects
-- **RancherProjectController**: Reconciles the CRD with actual Rancher state
+- **V1Project CRD**: Defines the desired state of Rancher projects
+- **ProjectController**: Reconciles the CRD with actual Rancher state
 - **RancherApiService**: Handles communication with the Rancher API
 - **RancherAuthService**: Manages authentication (token or username/password)
 - **MetricsService**: Exposes Prometheus metrics on port 9090
@@ -288,7 +288,7 @@ curl http://localhost:9090/metrics
 
 ```bash
 # For a specific project
-kubectl describe rancherproject my-project
+kubectl describe project my-project
 
 # All operator events
 kubectl get events --field-selector source=rancher-devops-operator

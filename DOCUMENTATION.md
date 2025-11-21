@@ -24,7 +24,7 @@ rancher-devops-operator/
 │   ├── launch.json                    # VS Code debug configuration
 │   └── tasks.json                     # VS Code build tasks
 ├── examples/
-│   └── rancher-project-sample.yaml    # Sample RancherProject CRD
+│   └── rancher-project-sample.yaml    # Sample Project CRD
 ├── helm/
 │   └── rancher-devops-operator/
 │       ├── Chart.yaml
@@ -33,15 +33,15 @@ rancher-devops-operator/
 │           ├── _helpers.tpl
 │           ├── clusterrole.yaml       # Cluster-wide permissions
 │           ├── clusterrolebinding.yaml
-│           ├── crd.yaml               # RancherProject CRD definition
+│           ├── crd.yaml               # Project CRD definition
 │           ├── deployment.yaml
 │           ├── secret.yaml
 │           └── serviceaccount.yaml
 ├── rancher-devops-operator/
 │   ├── Controller/
-│   │   └── RancherProjectController.cs  # Main reconciliation logic
+│   │   └── ProjectController.cs        # Main reconciliation logic
 │   ├── Entities/
-│   │   └── V1RancherProject.cs       # CRD entity definition
+│   │   └── V1Project.cs             # CRD entity definition
 │   ├── Models/
 │   │   └── RancherApiModels.cs       # Rancher API models
 │   ├── Services/
@@ -64,9 +64,9 @@ rancher-devops-operator/
 ## Components
 
 ### 1. Custom Resource Definition (CRD)
-**File**: `Entities/V1RancherProject.cs`
+**File**: `Entities/V1Project.cs`
 
-Defines the `RancherProject` custom resource with:
+Defines the `Project` custom resource with:
 - `clusterName`: Name of the Rancher cluster
 - `displayName`: Project display name
 - `description`: Optional project description
@@ -75,9 +75,9 @@ Defines the `RancherProject` custom resource with:
 - `resourceQuota`: Optional resource quotas
 
 ### 2. Controller
-**File**: `Controller/RancherProjectController.cs`
+**File**: `Controller/ProjectController.cs`
 
-Implements `IEntityController<V1RancherProject>` with:
+Implements `IEntityController<V1Project>` with:
 - `ReconcileAsync`: Creates/updates Rancher projects, namespaces, and members
 - `DeletedAsync`: Cleans up Rancher resources when CRD is deleted
 
@@ -274,11 +274,11 @@ dotnet run
 
 ## Example Usage
 
-Create a `RancherProject`:
+Create a `Project`:
 
 ```yaml
 apiVersion: rancher.devops.io/v1
-kind: RancherProject
+kind: Project
 metadata:
   name: my-dev-project
 spec:
@@ -300,8 +300,8 @@ kubectl apply -f rancher-project.yaml
 
 Check status:
 ```bash
-kubectl get rancherprojects
-kubectl describe rancherproject my-dev-project
+kubectl get projects
+kubectl describe project my-dev-project
 ```
 
 ## Technical Highlights

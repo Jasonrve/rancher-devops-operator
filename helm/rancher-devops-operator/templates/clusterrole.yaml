@@ -5,11 +5,11 @@ metadata:
   labels:
     {{- include "rancher-devops-operator.labels" . | nindent 4 }}
 rules:
-  # Permissions for RancherProject CRD
+  # Permissions for Project CRD
   - apiGroups:
       - rancher.devops.io
     resources:
-      - rancherprojects
+      - projects
     verbs:
       - get
       - list
@@ -21,7 +21,7 @@ rules:
   - apiGroups:
       - rancher.devops.io
     resources:
-      - rancherprojects/status
+      - projects/status
     verbs:
       - get
       - update
