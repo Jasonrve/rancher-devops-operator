@@ -96,6 +96,8 @@ public class RancherWebSocketService : BackgroundService
 
         // Listen for events
         var buffer = new byte[8192];
+        var messageBuilder = new StringBuilder();
+        
         while (_webSocket.State == WebSocketState.Open && !stoppingToken.IsCancellationRequested)
         {
             var result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), stoppingToken);
@@ -109,8 +111,17 @@ public class RancherWebSocketService : BackgroundService
 
             if (result.MessageType == WebSocketMessageType.Text)
             {
-                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                await HandleNamespaceEventAsync(json, stoppingToken);
+                var chunk = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                messageBuilder.Append(chunk);
+                
+                // Check if this is the end of the message
+                if (result.EndOfMessage)
+                {
+                    var completeMessage = messageBuilder.ToString();
+                    messageBuilder.Clear();
+                    
+                    await HandleNamespaceEventAsync(completeMessage, stoppingToken);
+                }
             }
         }
     }
@@ -126,9 +137,11 @@ public class RancherWebSocketService : BackgroundService
                 return;
             }
 
+            // We only care about namespace events, ignore others (project, cluster, etc.)
             var resourceType = eventData.Data.ResourceType;
-            if (resourceType != "namespace")
+            if (!string.Equals(resourceType, "namespace", StringComparison.OrdinalIgnoreCase))
             {
+                _logger.LogDebug("Ignoring non-namespace event: {ResourceType}", resourceType);
                 return;
             }
 
