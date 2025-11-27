@@ -189,8 +189,17 @@ public class RancherNamespaceWatchService : BackgroundService
 
                 _logger.LogInformation("Connecting to Kubernetes Watch API for cluster {ClusterName}: {Url}", clusterName, watchUrl);
                 
-                await webSocket.ConnectAsync(new Uri(watchUrl), cancellationToken);
-                _logger.LogInformation("Connected to watch for cluster {ClusterName}", clusterName);
+                try
+                {
+                    await webSocket.ConnectAsync(new Uri(watchUrl), cancellationToken);
+                    _logger.LogInformation("Connected to watch for cluster {ClusterName}", clusterName);
+                }
+                catch (WebSocketException wsEx)
+                {
+                    _logger.LogError(wsEx, "WebSocket connection failed for cluster {ClusterName}. Status: {Status}, Message: {Message}", 
+                        clusterName, wsEx.WebSocketErrorCode, wsEx.Message);
+                    throw;
+                }
 
                 // Listen for watch events
                 var buffer = new byte[16384]; // 16KB buffer for watch events
