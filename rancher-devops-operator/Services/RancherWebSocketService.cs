@@ -76,12 +76,12 @@ public class RancherWebSocketService : BackgroundService
             _webSocket.Options.RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true;
         }
 
-        // Build WebSocket URL - subscribe to namespace resource changes
-        // Fix double slash issue by ensuring URL doesn't end with /
+        // Build WebSocket URL - subscribe to namespace resource changes globally (all clusters)
+        // Using /v3/subscribe for global-level subscription across all clusters
         var wsUrl = _rancherUrl.TrimEnd('/').Replace("https://", "wss://").Replace("http://", "ws://");
         var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
 
-        _logger.LogInformation("Connecting to Rancher WebSocket: {Url} with Basic auth", subscribeUrl);
+        _logger.LogInformation("Connecting to Rancher WebSocket (global subscription for all clusters): {Url}", subscribeUrl);
         
         await _webSocket.ConnectAsync(new Uri(subscribeUrl), stoppingToken);
         _logger.LogInformation("Connected to Rancher WebSocket");
