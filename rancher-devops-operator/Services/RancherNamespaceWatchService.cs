@@ -161,9 +161,21 @@ public class RancherNamespaceWatchService : BackgroundService
     private async Task WatchClusterNamespacesAsync(string clusterName, string clusterId, CancellationToken cancellationToken)
     {
         var reconnectDelay = TimeSpan.FromSeconds(5);
+        var consecutiveFailures = 0;
+        var maxConsecutiveFailures = 5;
         
         while (!cancellationToken.IsCancellationRequested)
         {
+            // After multiple failures, fallback to polling
+            if (consecutiveFailures >= maxConsecutiveFailures)
+            {
+                _logger.LogWarning("WebSocket watch failed {Count} times for cluster {ClusterName}, falling back to polling every {Interval} minutes", 
+                    consecutiveFailures, clusterName, _clusterCheckInterval.TotalMinutes);
+                
+                await PollClusterNamespacesAsync(clusterName, clusterId, cancellationToken);
+                return;
+            }
+
             ClientWebSocket? webSocket = null;
             try
             {
@@ -175,6 +187,9 @@ public class RancherNamespaceWatchService : BackgroundService
                 var base64Token = Convert.ToBase64String(tokenBytes);
                 webSocket.Options.SetRequestHeader("Authorization", $"Basic {base64Token}");
 
+                // Set keep-alive to prevent proxy timeouts
+                webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+                
                 // Allow insecure SSL if configured
                 var allowInsecure = _configuration.GetValue<bool>("Rancher:AllowInsecureSsl", false);
                 if (allowInsecure)
@@ -191,13 +206,25 @@ public class RancherNamespaceWatchService : BackgroundService
                 
                 try
                 {
-                    await webSocket.ConnectAsync(new Uri(watchUrl), cancellationToken);
+                    // Set a connection timeout
+                    using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+                    
+                    await webSocket.ConnectAsync(new Uri(watchUrl), timeoutCts.Token);
                     _logger.LogInformation("Connected to watch for cluster {ClusterName}", clusterName);
+                    consecutiveFailures = 0; // Reset on successful connection
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogError("Connection timeout after 30 seconds for cluster {ClusterName}", clusterName);
+                    consecutiveFailures++;
+                    throw new TimeoutException($"WebSocket connection timed out for cluster {clusterName}");
                 }
                 catch (WebSocketException wsEx)
                 {
                     _logger.LogError(wsEx, "WebSocket connection failed for cluster {ClusterName}. Status: {Status}, Message: {Message}", 
                         clusterName, wsEx.WebSocketErrorCode, wsEx.Message);
+                    consecutiveFailures++;
                     throw;
                 }
 
@@ -298,11 +325,24 @@ public class RancherNamespaceWatchService : BackgroundService
             _logger.LogInformation("Namespace watch event [{ClusterName}]: {EventType} - {Namespace} (projectId: {ProjectId})", 
                 clusterName, eventType, namespaceName, projectId ?? "none");
 
-            // Only handle ADDED events for namespaces with a project assignment
-            if (!string.Equals(eventType, "ADDED", StringComparison.OrdinalIgnoreCase) || 
-                string.IsNullOrEmpty(projectId) || 
-                string.IsNullOrEmpty(namespaceName))
+            // Only handle ADDED and MODIFIED events for namespaces
+            if (string.IsNullOrEmpty(namespaceName))
             {
+                return;
+            }
+
+            // Handle both ADDED and MODIFIED events to catch when projectId annotation is added later
+            if (!string.Equals(eventType, "ADDED", StringComparison.OrdinalIgnoreCase) && 
+                !string.Equals(eventType, "MODIFIED", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Ignoring {EventType} event for namespace {Namespace}", eventType, namespaceName);
+                return;
+            }
+
+            // Skip if no project assignment yet
+            if (string.IsNullOrEmpty(projectId))
+            {
+                _logger.LogDebug("Namespace {Namespace} does not have projectId annotation yet, skipping", namespaceName);
                 return;
             }
 
@@ -409,5 +449,108 @@ public class RancherNamespaceWatchService : BackgroundService
         {
             _logger.LogError(ex, "Error handling watch event for cluster {ClusterName}: {Json}", clusterName, json);
         }
+    }
+
+    private async Task PollClusterNamespacesAsync(string clusterName, string clusterId, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Starting polling mode for cluster {ClusterName}", clusterName);
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                // Get all projects for this cluster with Observe policy
+                var allProjects = await _kubernetesClient.ListAsync<V1Project>(cancellationToken: cancellationToken);
+                var clusterProjects = allProjects.Where(p =>
+                    string.Equals(p.Spec.ClusterName, clusterName, StringComparison.OrdinalIgnoreCase) &&
+                    p.Status?.ProjectId != null &&
+                    p.Spec.ManagementPolicies != null &&
+                    p.Spec.ManagementPolicies.Any(policy => string.Equals(policy, "Observe", StringComparison.OrdinalIgnoreCase))
+                ).ToList();
+
+                foreach (var project in clusterProjects)
+                {
+                    try
+                    {
+                        var projectId = project.Status!.ProjectId!;
+                        var rancherNamespaces = await _rancherApi.GetProjectNamespacesAsync(projectId, cancellationToken);
+
+                        var newNamespaces = new List<string>();
+                        foreach (var ns in rancherNamespaces ?? new List<Models.RancherNamespace>())
+                        {
+                            if (string.IsNullOrEmpty(ns.Name))
+                                continue;
+
+                            if (!project.Spec.Namespaces.Any(specNs => string.Equals(specNs, ns.Name, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                newNamespaces.Add(ns.Name);
+                            }
+                        }
+
+                        if (newNamespaces.Any())
+                        {
+                            _logger.LogInformation("Discovered {Count} new namespace(s) for project {ProjectName} via polling", 
+                                newNamespaces.Count, project.Metadata.Name);
+
+                            // Retry logic for updates
+                            var maxRetries = 3;
+                            for (int attempt = 1; attempt <= maxRetries; attempt++)
+                            {
+                                try
+                                {
+                                    var currentProject = await _kubernetesClient.GetAsync<V1Project>(project.Metadata.Name, cancellationToken: cancellationToken);
+                                    if (currentProject == null)
+                                        break;
+
+                                    foreach (var ns in newNamespaces)
+                                    {
+                                        if (!currentProject.Spec.Namespaces.Contains(ns))
+                                        {
+                                            currentProject.Spec.Namespaces.Add(ns);
+                                        }
+                                    }
+
+                                    await _kubernetesClient.UpdateAsync(currentProject, cancellationToken);
+                                    _logger.LogInformation("Updated project {ProjectName} with new namespaces (polling)", project.Metadata.Name);
+
+                                    await _eventService.CreateEventAsync(
+                                        currentProject,
+                                        "NamespacesDiscovered",
+                                        $"Discovered and added {newNamespaces.Count} namespace(s) via polling (Observe policy)",
+                                        "Normal",
+                                        cancellationToken);
+
+                                    break;
+                                }
+                                catch (Exception ex) when (ex.Message.Contains("409") || ex.Message.Contains("Conflict"))
+                                {
+                                    if (attempt == maxRetries)
+                                    {
+                                        _logger.LogError(ex, "Failed to update project {ProjectName} after {Retries} attempts", 
+                                            project.Metadata.Name, maxRetries);
+                                    }
+                                    else
+                                    {
+                                        await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt), cancellationToken);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error polling namespaces for project {ProjectName}", project.Metadata.Name);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in polling loop for cluster {ClusterName}", clusterName);
+            }
+
+            await Task.Delay(_clusterCheckInterval, cancellationToken);
+        }
+
+        _logger.LogInformation("Stopped polling for cluster {ClusterName}", clusterName);
     }
 }
