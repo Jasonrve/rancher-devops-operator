@@ -79,12 +79,20 @@ public class RancherWebSocketService : BackgroundService
         // Build WebSocket URL - subscribe to namespace resource changes globally (all clusters)
         // Using /v3/subscribe for global-level subscription across all clusters
         var wsUrl = _rancherUrl.TrimEnd('/').Replace("https://", "wss://").Replace("http://", "ws://");
-        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
+        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceType=namespace";
 
         _logger.LogInformation("Connecting to Rancher WebSocket (global subscription for all clusters): {Url}", subscribeUrl);
         
-        await _webSocket.ConnectAsync(new Uri(subscribeUrl), stoppingToken);
-        _logger.LogInformation("Connected to Rancher WebSocket");
+        try
+        {
+            await _webSocket.ConnectAsync(new Uri(subscribeUrl), stoppingToken);
+            _logger.LogInformation("Connected to Rancher WebSocket");
+        }
+        catch (WebSocketException wsEx)
+        {
+            _logger.LogError("WebSocket connection failed with status: {Message}. This might indicate the WebSocket endpoint doesn't exist or requires different authentication.", wsEx.Message);
+            throw;
+        }
 
         // Listen for events
         var buffer = new byte[8192];
