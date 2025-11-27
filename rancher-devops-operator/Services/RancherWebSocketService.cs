@@ -73,19 +73,12 @@ public class RancherWebSocketService : BackgroundService
         // Build WebSocket URL - subscribe to namespace resource changes
         // Fix double slash issue by ensuring URL doesn't end with /
         var wsUrl = _rancherUrl.TrimEnd('/').Replace("https://", "wss://").Replace("http://", "ws://");
-        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
-
-        // For Rancher WebSocket, try using the token directly in the URL
-        if (token.Contains(':'))
-        {
-            // Split token into username:password and add as URL credentials
-            var parts = token.Split(':', 2);
-            subscribeUrl = wsUrl.Replace("wss://", $"wss://{Uri.EscapeDataString(parts[0])}:{Uri.EscapeDataString(parts[1])}@") 
-                + $"/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
-        }
+        
+        // Rancher WebSocket API supports access_token query parameter for authentication
+        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace&access_token={Uri.EscapeDataString(token)}";
 
         _logger.LogInformation("Connecting to Rancher WebSocket: {Url}", 
-            subscribeUrl.Contains("@") ? subscribeUrl.Substring(0, subscribeUrl.IndexOf("@")) + "@***" + subscribeUrl.Substring(subscribeUrl.IndexOf("@") + 1) : subscribeUrl);
+            subscribeUrl.Replace(Uri.EscapeDataString(token), "***"));
         
         await _webSocket.ConnectAsync(new Uri(subscribeUrl), stoppingToken);
         _logger.LogInformation("Connected to Rancher WebSocket");
