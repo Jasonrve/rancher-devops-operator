@@ -300,6 +300,7 @@ public class RancherNamespaceWatchService : BackgroundService
             // Find the Project CRD that manages this Rancher project
             var allProjects = await _kubernetesClient.ListAsync<V1Project>(cancellationToken: cancellationToken);
             
+            V1Project? targetProject = null;
             foreach (var project in allProjects)
             {
                 // Check if this CRD manages the project, is in the right cluster, and has Observe enabled
@@ -326,25 +327,73 @@ public class RancherNamespaceWatchService : BackgroundService
                     continue;
                 }
 
-                // Add the namespace to the CRD spec
-                _logger.LogInformation("Adding namespace {Namespace} to CRD {Name} spec (Observe enabled)", 
-                    namespaceName, project.Metadata.Name);
-                
-                project.Spec.Namespaces.Add(namespaceName);
-                await _kubernetesClient.UpdateAsync(project, cancellationToken);
-                
-                _logger.LogInformation("Successfully updated CRD {Name} with new namespace {Namespace}", 
-                    project.Metadata.Name, namespaceName);
-                
-                // Create Kubernetes event for successful update
-                await _eventService.CreateEventAsync(
-                    project,
-                    "NamespaceDiscovered",
-                    $"Discovered and added namespace '{namespaceName}' to project via Kubernetes Watch",
-                    "Normal",
-                    cancellationToken);
-                
+                targetProject = project;
                 break;
+            }
+
+            if (targetProject == null)
+            {
+                return;
+            }
+
+            // Add the namespace to the CRD spec with retry logic
+            _logger.LogInformation("Adding namespace {Namespace} to CRD {Name} spec (Observe enabled)", 
+                namespaceName, targetProject.Metadata.Name);
+            
+            var maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    targetProject.Spec.Namespaces.Add(namespaceName);
+                    await _kubernetesClient.UpdateAsync(targetProject, cancellationToken);
+                    
+                    _logger.LogInformation("Successfully updated CRD {Name} with new namespace {Namespace}", 
+                        targetProject.Metadata.Name, namespaceName);
+
+                    // Create Kubernetes event for successful update
+                    await _eventService.CreateEventAsync(
+                        targetProject,
+                        "NamespaceDiscovered",
+                        $"Discovered and added namespace '{namespaceName}' to project via Kubernetes Watch",
+                        "Normal",
+                        cancellationToken);
+                    
+                    break;
+                }
+                catch (Exception ex) when (ex.Message.Contains("409") || ex.Message.Contains("Conflict"))
+                {
+                    if (attempt == maxRetries)
+                    {
+                        _logger.LogError(ex, "Failed to update CRD {Name} after {Retries} attempts due to conflicts", 
+                            targetProject.Metadata.Name, maxRetries);
+                        throw;
+                    }
+                    
+                    _logger.LogWarning("Conflict updating CRD {Name} (attempt {Attempt}/{Max}), refetching and retrying", 
+                        targetProject.Metadata.Name, attempt, maxRetries);
+                    
+                    // Refetch the latest version
+                    await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt), cancellationToken);
+                    var latestProject = await _kubernetesClient.GetAsync<V1Project>(targetProject.Metadata.Name, cancellationToken: cancellationToken);
+                    
+                    if (latestProject == null)
+                    {
+                        _logger.LogWarning("Project {Name} no longer exists", targetProject.Metadata.Name);
+                        return;
+                    }
+                    
+                    // Check again if namespace was already added by another process
+                    if (latestProject.Spec.Namespaces.Any(ns => ns.Equals(namespaceName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _logger.LogInformation("Namespace {Namespace} was already added to CRD {Name} by another process", 
+                            namespaceName, targetProject.Metadata.Name);
+                        return;
+                    }
+                    
+                    // Use the latest version for next retry
+                    targetProject = latestProject;
+                }
             }
         }
         catch (Exception ex)
