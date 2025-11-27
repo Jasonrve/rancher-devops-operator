@@ -63,9 +63,6 @@ public class RancherWebSocketService : BackgroundService
         // Get authentication token
         var token = await _authService.GetOrCreateTokenAsync(stoppingToken);
         
-        // Configure WebSocket
-        _webSocket.Options.SetRequestHeader("Authorization", $"Bearer {token}");
-        
         // Allow insecure SSL if configured
         var allowInsecure = _configuration.GetValue<bool>("Rancher:AllowInsecureSsl", false);
         if (allowInsecure)
@@ -74,10 +71,11 @@ public class RancherWebSocketService : BackgroundService
         }
 
         // Build WebSocket URL - subscribe to namespace resource changes
+        // Rancher WebSocket API authenticates via query parameter, not Authorization header
         var wsUrl = _rancherUrl.Replace("https://", "wss://").Replace("http://", "ws://");
-        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
+        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace&token={token}";
 
-        _logger.LogInformation("Connecting to Rancher WebSocket: {Url}", subscribeUrl);
+        _logger.LogInformation("Connecting to Rancher WebSocket: {Url}", subscribeUrl.Replace(token, "***"));
         
         await _webSocket.ConnectAsync(new Uri(subscribeUrl), stoppingToken);
         _logger.LogInformation("Connected to Rancher WebSocket");
