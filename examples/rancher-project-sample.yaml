@@ -3,11 +3,23 @@ kind: Project
 metadata:
   name: my-dev-project
 spec:
-  # Crossplane-like management policies. Omit for default [Observe, Create, Delete].
-  # To prevent deletions (create-only), use [Observe, Create].
+  # Management policies control operator behavior.
+  # Default (if omitted): ["Create", "Delete"]
+  # 
+  # Available policies:
+  # - Create: Allows creating projects, namespaces, and members
+  # - Delete: Allows deleting projects and removing namespace associations
+  # - Observe: Discovers existing namespaces/members in project and adds them to CRD spec
+  #
+  # Common combinations:
+  # - ["Create", "Delete"]: Full management (default)
+  # - ["Create"]: Create-only, prevents deletion
+  # - ["Observe", "Create", "Delete"]: Take over existing project and fully manage it
+  # - ["Observe"]: Read-only discovery, no creation or deletion
   managementPolicies:
-    - Observe
     - Create
+    - Delete
+  
   # Name of the Rancher cluster (not the cluster ID)
   clusterName: "local"
   

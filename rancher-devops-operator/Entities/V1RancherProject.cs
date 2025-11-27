@@ -40,8 +40,11 @@ public class V1Project : CustomKubernetesEntity<V1Project.ProjectSpec, V1Project
         public ResourceQuota? ResourceQuota { get; set; }
 
         /// <summary>
-        /// Management policies controlling allowed actions (e.g., "Observe", "Create", "Delete").
-        /// If omitted, defaults to ["Observe","Create","Delete"].
+        /// Management policies controlling allowed actions: "Create", "Delete", "Observe".
+        /// If omitted or empty, defaults to ["Create", "Delete"].
+        /// - Create: Allows creating projects/namespaces/members
+        /// - Delete: Allows deleting projects and removing namespace associations
+        /// - Observe: Discovers and adds existing namespaces/members from project to CRD spec
         /// </summary>
         public List<string> ManagementPolicies { get; set; } = new();
     }

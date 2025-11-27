@@ -47,4 +47,5 @@ rancher:
   existingSecretTokenKey: token
   existingSecretUsernameKey: username
   existingSecretPasswordKey: password
-env: []
+env:
+  cleanupNamespaces: false

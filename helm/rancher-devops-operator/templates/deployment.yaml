@@ -61,6 +61,10 @@ spec:
             {{- end }}
             - name: Rancher__AllowInsecureSsl
               value: {{ .Values.rancher.allowInsecureSsl | quote }}
+            {{- if .Values.env.cleanupNamespaces }}
+            - name: Rancher__CleanupNamespaces
+              value: {{ .Values.env.cleanupNamespaces | quote }}
+            {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

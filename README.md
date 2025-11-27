@@ -69,6 +69,9 @@ rancher:
   token: "your-rancher-api-token"
   allowInsecureSsl: false  # Set to true for development with self-signed certs
 
+env:
+  cleanupNamespaces: false  # Set to true to delete namespaces when removed from CRD
+
 image:
   repository: ghcr.io/Jasonrve/rancher-devops-operator
   tag: "latest"
@@ -81,6 +84,9 @@ rancher:
   username: "admin"
   password: "your-password"
   allowInsecureSsl: false
+
+env:
+  cleanupNamespaces: false  # Set to true to delete namespaces when removed from CRD
 
 image:
   repository: ghcr.io/Jasonrve/rancher-devops-operator
@@ -136,6 +142,14 @@ spec:
   displayName: "My Application Project"
   description: "Project for my application"
   
+  # Optional: Management policies (defaults to ["Create", "Delete"])
+  # - Create: Allows creating projects/namespaces/members
+  # - Delete: Allows deleting projects and removing namespace associations
+  # - Observe: Discovers and imports existing namespaces/members from project into CRD
+  managementPolicies:
+    - Create
+    - Delete
+  
   namespaces:
     - app-frontend
     - app-backend
@@ -152,6 +166,58 @@ spec:
     limitsMemory: "20Gi"
     requestsCpu: "2"
     requestsMemory: "4Gi"
+```
+
+### Management Policy Examples
+
+**Default Behavior (Create and Delete)**
+```yaml
+# Omit managementPolicies or leave empty for default
+spec:
+  clusterName: "local"
+  displayName: "My Project"
+  # Creates project/namespaces/members and allows deletion
+```
+
+**Take Over Existing Project (with Observe)**
+```yaml
+spec:
+  clusterName: "local"
+  displayName: "Existing Project"  # Must match existing project name
+  managementPolicies:
+    - Observe  # Discovers and adds existing namespaces/members to CRD
+    - Create
+    - Delete
+  namespaces: []  # Will be populated automatically
+  members: []     # Will be populated automatically
+```
+
+**Monitor-Only Mode (Observe without modifications)**
+```yaml
+spec:
+  clusterName: "local"
+  displayName: "Monitored Project"  # Must match existing project name
+  managementPolicies:
+    - Observe  # Only discovers and tracks, never creates or deletes
+  namespaces: []  # Auto-populated and kept in sync via WebSocket events
+  members: []     # Auto-populated from Rancher
+```
+
+The Observe policy enables real-time monitoring of Rancher projects:
+- **Initial Discovery**: On first reconciliation, the operator queries Rancher for all namespaces and members in the project and updates the CRD spec
+- **Real-Time Updates**: A WebSocket connection to Rancher monitors namespace creation events. When a new namespace is created in an observed project, the CRD is automatically updated
+- **No Modifications**: With Observe-only mode (no Create or Delete), the operator never modifies Rancher resources—it only tracks changes
+- **Conflict-Free**: Multiple CRDs can observe the same project without conflicts, ideal for read-only monitoring dashboards
+
+**Create-Only (No Deletion)**
+```yaml
+spec:
+  clusterName: "local"
+  displayName: "Protected Project"
+  managementPolicies:
+    - Create  # Only creates, never deletes
+  namespaces:
+    - protected-app
 ```
 
 Apply the resource:
@@ -196,7 +262,8 @@ dotnet build
   "Rancher": {
     "Url": "https://rancher.local",
     "Token": "your-token-here",
-    "AllowInsecureSsl": true
+    "AllowInsecureSsl": true,
+    "CleanupNamespaces": false
   }
 }
 ```
@@ -208,7 +275,8 @@ dotnet build
     "Url": "https://rancher.local",
     "Username": "admin",
     "Password": "your-password",
-    "AllowInsecureSsl": true
+    "AllowInsecureSsl": true,
+    "CleanupNamespaces": false
   }
 }
 ```
@@ -219,12 +287,14 @@ dotnet build
 export Rancher__Url="https://rancher.local"
 export Rancher__Token="your-token-here"
 export Rancher__AllowInsecureSsl=true
+export Rancher__CleanupNamespaces=false
 
 # Or using username/password
 export Rancher__Url="https://rancher.local"
 export Rancher__Username="admin"
 export Rancher__Password="your-password"
 export Rancher__AllowInsecureSsl=true
+export Rancher__CleanupNamespaces=false
 ```
 
 2. Run the operator:
@@ -253,8 +323,16 @@ The operator consists of:
 - **ProjectController**: Reconciles the CRD with actual Rancher state
 - **RancherApiService**: Handles communication with the Rancher API
 - **RancherAuthService**: Manages authentication (token or username/password)
+- **RancherWebSocketService**: Monitors Rancher namespace creation events in real-time via WebSocket API
 - **MetricsService**: Exposes Prometheus metrics on port 9090
 - **KubernetesEventService**: Creates Kubernetes events for visibility
+
+### Real-Time Event Monitoring
+
+The operator maintains a WebSocket connection to Rancher's `/v3/subscribe` API to monitor namespace creation events. When the `Observe` management policy is enabled on a Project CRD, the operator automatically updates the CRD's namespace list whenever a matching namespace is created in Rancher. This enables:
+- **Event-Driven Updates**: No polling required—namespace additions are reflected immediately
+- **Selective Monitoring**: Only CRDs with `Observe` policy receive updates
+- **Connection Resilience**: Automatic reconnection with exponential backoff on failures
  
 
 ## Observability
@@ -301,6 +379,16 @@ kubectl get events --field-selector source=rancher-devops-operator
 - `Rancher__Url`: Rancher server URL
 - `Rancher__Token`: Rancher API token
 - `Rancher__AllowInsecureSsl`: Allow insecure SSL (development only)
+- `Rancher__CleanupNamespaces`: Delete namespaces when removed from CRD (default: `false`)
+
+### Namespace Cleanup Behavior
+
+By default (`CleanupNamespaces=false`), namespaces are **never deleted**. When a namespace is removed from a Project CRD spec:
+- The namespace is disassociated from the project
+- The namespace itself remains in the cluster
+- Workloads continue running
+
+When `CleanupNamespaces=true`, namespaces are **deleted** when removed from the CRD spec or when the CRD is deleted. This includes deleting all resources within the namespace.
 
 ### Rancher API Token
 
