@@ -43,6 +43,7 @@ rancher:
   username: ''
   password: ''
   allowInsecureSsl: false
+  clusterCheckInterval: 5
   existingSecret: ''
   existingSecretTokenKey: token
   existingSecretUsernameKey: username

@@ -40,8 +40,8 @@ builder.Services.AddSingleton<IRancherAuthService, RancherAuthService>();
 builder.Services.AddSingleton<IRancherApiService, RancherApiService>();
 builder.Services.AddSingleton<IKubernetesEventService, KubernetesEventService>();
 
-// Add WebSocket service for namespace event monitoring
-builder.Services.AddHostedService<RancherWebSocketService>();
+// Add namespace watch service for Observe policy (periodic polling)
+builder.Services.AddHostedService<RancherNamespaceWatchService>();
 
 // Add Kubernetes operator
 builder.Services
