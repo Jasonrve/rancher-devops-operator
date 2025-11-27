@@ -120,6 +120,7 @@ public class RancherWebSocketService : BackgroundService
                     var completeMessage = messageBuilder.ToString();
                     messageBuilder.Clear();
                     
+                    _logger.LogDebug("Received WebSocket message: {MessageLength} bytes", completeMessage.Length);
                     await HandleNamespaceEventAsync(completeMessage, stoppingToken);
                 }
             }
@@ -132,8 +133,24 @@ public class RancherWebSocketService : BackgroundService
         {
             var eventData = JsonSerializer.Deserialize<RancherWebSocketEvent>(json);
             
-            if (eventData?.Data?.Object == null || eventData.Name != "resource.change")
+            if (eventData?.Name == null)
             {
+                _logger.LogDebug("Received event with no name, ignoring");
+                return;
+            }
+
+            _logger.LogInformation("Received WebSocket event: {EventName}, ResourceType: {ResourceType}", 
+                eventData.Name, eventData.Data?.ResourceType ?? "null");
+
+            if (eventData.Name != "resource.change")
+            {
+                _logger.LogDebug("Ignoring non-resource.change event: {EventName}", eventData.Name);
+                return;
+            }
+
+            if (eventData.Data?.Object == null)
+            {
+                _logger.LogDebug("Event has no data object, ignoring");
                 return;
             }
 
