@@ -63,23 +63,6 @@ public class RancherWebSocketService : BackgroundService
         // Get authentication token
         var token = await _authService.GetOrCreateTokenAsync(stoppingToken);
         
-        // Parse token to get username and password parts (format: token-xxxxx:yyyyyy)
-        string authHeader;
-        if (token.Contains(':'))
-        {
-            // Convert token to base64 for basic auth
-            var tokenBytes = System.Text.Encoding.UTF8.GetBytes(token);
-            var base64Token = Convert.ToBase64String(tokenBytes);
-            authHeader = $"Basic {base64Token}";
-        }
-        else
-        {
-            authHeader = $"Bearer {token}";
-        }
-        
-        // Configure WebSocket authentication
-        _webSocket.Options.SetRequestHeader("Authorization", authHeader);
-        
         // Allow insecure SSL if configured
         var allowInsecure = _configuration.GetValue<bool>("Rancher:AllowInsecureSsl", false);
         if (allowInsecure)
@@ -88,11 +71,21 @@ public class RancherWebSocketService : BackgroundService
         }
 
         // Build WebSocket URL - subscribe to namespace resource changes
-        var wsUrl = _rancherUrl.Replace("https://", "wss://").Replace("http://", "ws://");
+        // Fix double slash issue by ensuring URL doesn't end with /
+        var wsUrl = _rancherUrl.TrimEnd('/').Replace("https://", "wss://").Replace("http://", "ws://");
         var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
 
-        _logger.LogInformation("Connecting to Rancher WebSocket: {Url} with {AuthType}", 
-            subscribeUrl, token.Contains(':') ? "Basic" : "Bearer");
+        // For Rancher WebSocket, try using the token directly in the URL
+        if (token.Contains(':'))
+        {
+            // Split token into username:password and add as URL credentials
+            var parts = token.Split(':', 2);
+            subscribeUrl = wsUrl.Replace("wss://", $"wss://{Uri.EscapeDataString(parts[0])}:{Uri.EscapeDataString(parts[1])}@") 
+                + $"/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
+        }
+
+        _logger.LogInformation("Connecting to Rancher WebSocket: {Url}", 
+            subscribeUrl.Contains("@") ? subscribeUrl.Substring(0, subscribeUrl.IndexOf("@")) + "@***" + subscribeUrl.Substring(subscribeUrl.IndexOf("@") + 1) : subscribeUrl);
         
         await _webSocket.ConnectAsync(new Uri(subscribeUrl), stoppingToken);
         _logger.LogInformation("Connected to Rancher WebSocket");
