@@ -63,6 +63,12 @@ public class RancherWebSocketService : BackgroundService
         // Get authentication token
         var token = await _authService.GetOrCreateTokenAsync(stoppingToken);
         
+        // Rancher WebSocket API requires token in Authorization header as Basic auth
+        // Token format is "token-xxxxx:yyyyyy" which is username:password
+        var tokenBytes = Encoding.UTF8.GetBytes(token);
+        var base64Token = Convert.ToBase64String(tokenBytes);
+        _webSocket.Options.SetRequestHeader("Authorization", $"Basic {base64Token}");
+        
         // Allow insecure SSL if configured
         var allowInsecure = _configuration.GetValue<bool>("Rancher:AllowInsecureSsl", false);
         if (allowInsecure)
@@ -73,12 +79,9 @@ public class RancherWebSocketService : BackgroundService
         // Build WebSocket URL - subscribe to namespace resource changes
         // Fix double slash issue by ensuring URL doesn't end with /
         var wsUrl = _rancherUrl.TrimEnd('/').Replace("https://", "wss://").Replace("http://", "ws://");
-        
-        // Rancher WebSocket API supports access_token query parameter for authentication
-        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace&access_token={Uri.EscapeDataString(token)}";
+        var subscribeUrl = $"{wsUrl}/v3/subscribe?eventNames=resource.change&resourceTypes=namespace";
 
-        _logger.LogInformation("Connecting to Rancher WebSocket: {Url}", 
-            subscribeUrl.Replace(Uri.EscapeDataString(token), "***"));
+        _logger.LogInformation("Connecting to Rancher WebSocket: {Url} with Basic auth", subscribeUrl);
         
         await _webSocket.ConnectAsync(new Uri(subscribeUrl), stoppingToken);
         _logger.LogInformation("Connected to Rancher WebSocket");
