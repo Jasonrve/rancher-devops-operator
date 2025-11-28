@@ -10,6 +10,9 @@ using rancher_devops_operator.Services;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// Ensure environment variables are properly loaded
+builder.Configuration.AddEnvironmentVariables();
+
 // Ensure logging uses appsettings.json configuration only (no env overrides needed)
 builder.Logging.ClearProviders();
 builder.Logging.AddConfiguration(builder.Configuration.GetSection("Logging"));

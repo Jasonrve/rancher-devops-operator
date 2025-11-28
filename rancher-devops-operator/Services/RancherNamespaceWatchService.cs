@@ -93,7 +93,7 @@ public class RancherNamespaceWatchService : BackgroundService
                     await CheckAndUpdateClusterWatchesAsync(stoppingToken);
                     await Task.Delay(_clusterCheckInterval, stoppingToken);
                 }
-                else // none mode - just wait
+                else // none mode - skip all cluster operations
                 {
                     await Task.Delay(_clusterCheckInterval, stoppingToken);
                 }
@@ -122,6 +122,13 @@ public class RancherNamespaceWatchService : BackgroundService
     private async Task CheckAndUpdateClusterWatchesAsync(CancellationToken stoppingToken)
     {
         _logger.LogDebug("Checking for clusters to watch");
+
+        // If observe method is 'none', skip all cluster operations regardless of CRD policies
+        if (_observeMethod == "none")
+        {
+            _logger.LogDebug("ObserveMethod is 'none', skipping cluster discovery");
+            return;
+        }
 
         // Get all Project CRDs with Observe policy
         var allProjects = await _kubernetesClient.ListAsync<V1Project>(cancellationToken: stoppingToken);
