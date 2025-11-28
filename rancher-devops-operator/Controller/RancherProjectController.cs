@@ -361,7 +361,7 @@ public class ProjectController : IEntityController<V1Project>
             {
                 try
                 {
-                    _logger.LogInformation("Adding member {PrincipalId} with role {Role} to project {ProjectId}", string.IsNullOrWhiteSpace(member.PrincipalId) ? member.PrincipalName : member.PrincipalId, member.Role, entity.Status.ProjectId);
+                    _logger.LogDebug("Adding member {PrincipalId} with role {Role} to project {ProjectId}", string.IsNullOrWhiteSpace(member.PrincipalId) ? member.PrincipalName : member.PrincipalId, member.Role, entity.Status.ProjectId);
                     var effectivePrincipalId = member.PrincipalId;
                     if (string.IsNullOrWhiteSpace(effectivePrincipalId) && !string.IsNullOrWhiteSpace(member.PrincipalName))
                     {

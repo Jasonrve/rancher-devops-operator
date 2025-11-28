@@ -476,7 +476,7 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Adding member {PrincipalId} with role {Role} to project {ProjectId}", principalId, role, projectId);
+            _logger.LogDebug("Adding member {PrincipalId} with role {Role} to project {ProjectId}", principalId, role, projectId);
 
             var bindingRequest = new RancherProjectRoleBindingRequest
             {
@@ -518,7 +518,7 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Fetching members for project {ProjectId}", projectId);
+            _logger.LogDebug("Fetching members for project {ProjectId}", projectId);
             var response = await _httpClient.GetAsync($"/v3/projectRoleTemplateBindings?projectId={projectId}", cancellationToken);
             response.EnsureSuccessStatusCode();
 
