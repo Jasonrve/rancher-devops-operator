@@ -315,45 +315,53 @@ public class ProjectController : IEntityController<V1Project>
             }
             MetricsService.ActiveNamespaces.Set(namespaceCount);
 
-            // Handle namespaces removed from spec - disassociate them from the project
-            if (entity.Status.CreatedNamespaces.Count > 0 && !string.IsNullOrEmpty(entity.Status.ClusterId))
+            // Handle namespaces removed from spec - disassociate them from the Rancher project (do not delete)
+            if (!string.IsNullOrEmpty(entity.Status.ClusterId) && !string.IsNullOrEmpty(entity.Status.ProjectId))
             {
-                var currentNamespaces = entity.Spec.Namespaces.Select(ns => ns.ToLowerInvariant()).ToHashSet();
-                var removedNamespaces = entity.Status.CreatedNamespaces.Where(ns => !currentNamespaces.Contains(ns)).ToList();
-                
-                foreach (var removedNs in removedNamespaces)
+                try
                 {
-                    try
+                    var desiredNamespaces = entity.Spec.Namespaces.Select(ns => ns.ToLowerInvariant()).ToHashSet();
+                    var projectNamespaces = await _rancherApi.GetProjectNamespacesAsync(entity.Status.ProjectId, cancellationToken);
+                    var actualNamespaces = projectNamespaces.Select(n => n.Name.ToLowerInvariant()).ToHashSet();
+
+                    // Names currently in Rancher project but not in CRD spec should be disassociated
+                    var namespacesToRemove = actualNamespaces.Except(desiredNamespaces).ToList();
+
+                    foreach (var removedNs in namespacesToRemove)
                     {
-                        if (_cleanupNamespaces)
+                        try
                         {
-                            _logger.LogInformation("Deleting namespace {Namespace} (CleanupNamespaces=true)", removedNs);
-                            var deleted = await _rancherApi.DeleteNamespaceAsync(entity.Status.ClusterId, removedNs, cancellationToken);
-                            if (deleted)
+                            if (_cleanupNamespaces)
                             {
-                                MetricsService.NamespacesDeleted.Inc();
-                                await _eventService.CreateEventAsync(entity, "NamespaceDeleted", 
-                                    $"Deleted namespace {removedNs}", "Normal", cancellationToken);
+                                _logger.LogInformation("Deleting namespace {Namespace} (CleanupNamespaces=true)", removedNs);
+                                var deleted = await _rancherApi.DeleteNamespaceAsync(entity.Status.ClusterId, removedNs, cancellationToken);
+                                if (deleted)
+                                {
+                                    MetricsService.NamespacesDeleted.Inc();
+                                    await _eventService.CreateEventAsync(entity, "NamespaceDeleted", $"Deleted namespace {removedNs}", "Normal", cancellationToken);
+                                }
+                            }
+                            else
+                            {
+                                _logger.LogInformation("Removing namespace {Namespace} from project {ProjectId} (CleanupNamespaces=false)", removedNs, entity.Status.ProjectId);
+                                var removed = await _rancherApi.RemoveNamespaceFromProjectAsync(entity.Status.ClusterId, removedNs, cancellationToken);
+                                if (removed)
+                                {
+                                    await _eventService.CreateEventAsync(entity, "NamespaceRemoved", $"Removed namespace {removedNs} from project (namespace preserved)", "Normal", cancellationToken);
+                                }
                             }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            _logger.LogInformation("Removing namespace {Namespace} from project {ProjectId} (CleanupNamespaces=false)", removedNs, entity.Status.ProjectId);
-                            var removed = await _rancherApi.RemoveNamespaceFromProjectAsync(entity.Status.ClusterId, removedNs, cancellationToken);
-                            if (removed)
-                            {
-                                await _eventService.CreateEventAsync(entity, "NamespaceRemoved", 
-                                    $"Removed namespace {removedNs} from project (namespace preserved)", "Normal", cancellationToken);
-                            }
+                            var action = _cleanupNamespaces ? "delete" : "remove";
+                            _logger.LogWarning(ex, "Failed to {Action} namespace {Namespace}", action, removedNs);
+                            await _eventService.CreateEventAsync(entity, "NamespaceRemovalFailed", $"Failed to {action} namespace {removedNs}: {ex.Message}", "Warning", cancellationToken);
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        var action = _cleanupNamespaces ? "delete" : "remove";
-                        _logger.LogWarning(ex, "Failed to {Action} namespace {Namespace}", action, removedNs);
-                        await _eventService.CreateEventAsync(entity, "NamespaceRemovalFailed", 
-                            $"Failed to {action} namespace {removedNs}: {ex.Message}", "Warning", cancellationToken);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to evaluate namespaces for removal from project {ProjectId}", entity.Status.ProjectId);
                 }
             }
 
