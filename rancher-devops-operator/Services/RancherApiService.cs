@@ -10,6 +10,7 @@ namespace rancher_devops_operator.Services;
 public interface IRancherApiService
 {
     Task<string?> GetClusterIdByNameAsync(string clusterName, CancellationToken cancellationToken);
+    Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken);
     Task<RancherProject?> CreateProjectAsync(string clusterId, string projectName, string? description, CancellationToken cancellationToken);
     Task<RancherProject?> GetProjectByNameAsync(string clusterId, string projectName, CancellationToken cancellationToken);
     Task<bool> DeleteProjectAsync(string projectId, CancellationToken cancellationToken);
@@ -89,6 +90,48 @@ public class RancherApiService : IRancherApiService
         {
             stopwatch.Stop();
             MetricsService.RecordApiCall("get_cluster", success, stopwatch.Elapsed.TotalSeconds);
+        }
+    }
+
+    public async Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var success = false;
+        try
+        {
+            _logger.LogInformation("Generating kubeconfig for cluster: {ClusterId}", clusterId);
+            
+            var requestBody = new { };
+            var jsonContent = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"/v3/clusters/{clusterId}?action=generateKubeconfig", content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(responseContent);
+            
+            if (doc.RootElement.TryGetProperty("config", out var configElement))
+            {
+                var kubeconfig = configElement.GetString();
+                _logger.LogInformation("Successfully generated kubeconfig for cluster: {ClusterId}", clusterId);
+                success = true;
+                return kubeconfig;
+            }
+
+            _logger.LogWarning("No kubeconfig found in response for cluster: {ClusterId}", clusterId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating kubeconfig for cluster: {ClusterId}", clusterId);
+            throw;
+        }
+        finally
+        {
+            stopwatch.Stop();
+            MetricsService.RecordApiCall("generate_kubeconfig", success, stopwatch.Elapsed.TotalSeconds);
         }
     }
 
