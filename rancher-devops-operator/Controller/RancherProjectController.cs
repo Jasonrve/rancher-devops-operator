@@ -149,18 +149,25 @@ public class ProjectController : IEntityController<V1Project>
                         {
                             _logger.LogInformation("Discovered {Count} existing namespaces in project {ProjectId}", discoveredNamespaces.Count, existingProject.Id);
                             
-                            // Add discovered namespaces to spec if not already present
-                            foreach (var ns in discoveredNamespaces)
+                            // Only perform initial import when spec has no namespaces
+                            if (entity.Spec.Namespaces.Count == 0)
                             {
-                                if (!entity.Spec.Namespaces.Any(n => n.Equals(ns, StringComparison.OrdinalIgnoreCase)))
+                                foreach (var ns in discoveredNamespaces)
                                 {
-                                    entity.Spec.Namespaces.Add(ns);
-                                    _logger.LogInformation("Added discovered namespace {Namespace} to CRD spec", ns);
+                                    if (!entity.Spec.Namespaces.Any(n => n.Equals(ns, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        entity.Spec.Namespaces.Add(ns);
+                                        _logger.LogInformation("Added discovered namespace {Namespace} to CRD spec", ns);
+                                    }
                                 }
+                                
+                                // Update the CRD spec
+                                await _kubernetesClient.UpdateAsync(entity, cancellationToken);
                             }
-                            
-                            // Update the CRD spec
-                            await _kubernetesClient.UpdateAsync(entity, cancellationToken);
+                            else
+                            {
+                                _logger.LogDebug("Skipping namespace import because CRD spec already defines namespaces (authoritative).");
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -176,29 +183,36 @@ public class ProjectController : IEntityController<V1Project>
                         {
                             _logger.LogInformation("Discovered {Count} existing members in project {ProjectId}", existingMembers.Count, existingProject.Id);
                             
-                            // Add discovered members to spec if not already present
-                            foreach (var member in existingMembers)
+                            // Only perform initial import when spec has no members
+                            if (entity.Spec.Members.Count == 0)
                             {
-                                var principalId = member.UserPrincipalId ?? member.GroupPrincipalId;
-                                if (!string.IsNullOrEmpty(principalId))
+                                foreach (var member in existingMembers)
                                 {
-                                    var alreadyExists = entity.Spec.Members.Any(m => 
-                                        m.PrincipalId == principalId && m.Role == member.RoleTemplateId);
-                                    
-                                    if (!alreadyExists)
+                                    var principalId = member.UserPrincipalId ?? member.GroupPrincipalId;
+                                    if (!string.IsNullOrEmpty(principalId))
                                     {
-                                        entity.Spec.Members.Add(new V1Project.ProjectMember
+                                        var alreadyExists = entity.Spec.Members.Any(m => 
+                                            m.PrincipalId == principalId && m.Role == member.RoleTemplateId);
+                                        
+                                        if (!alreadyExists)
                                         {
-                                            PrincipalId = principalId,
-                                            Role = member.RoleTemplateId
-                                        });
-                                        _logger.LogInformation("Added discovered member {PrincipalId} with role {Role} to CRD spec", principalId, member.RoleTemplateId);
+                                            entity.Spec.Members.Add(new V1Project.ProjectMember
+                                            {
+                                                PrincipalId = principalId,
+                                                Role = member.RoleTemplateId
+                                            });
+                                            _logger.LogInformation("Added discovered member {PrincipalId} with role {Role} to CRD spec", principalId, member.RoleTemplateId);
+                                        }
                                     }
                                 }
+                                
+                                // Update the CRD spec
+                                await _kubernetesClient.UpdateAsync(entity, cancellationToken);
                             }
-                            
-                            // Update the CRD spec
-                            await _kubernetesClient.UpdateAsync(entity, cancellationToken);
+                            else
+                            {
+                                _logger.LogDebug("Skipping members import because CRD spec already defines members (authoritative).");
+                            }
                         }
                     }
                     catch (Exception ex)
