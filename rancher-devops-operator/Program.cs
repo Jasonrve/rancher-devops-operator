@@ -3,11 +3,21 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Prometheus;
 using rancher_devops_operator;
 using rancher_devops_operator.Services;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// Ensure logging uses appsettings.json configuration only (no env overrides needed)
+builder.Logging.ClearProviders();
+builder.Logging.AddConfiguration(builder.Configuration.GetSection("Logging"));
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+    options.SingleLine = true;
+});
 
 // Add HttpClient for Rancher API
 builder.Services.AddHttpClient("Rancher")
