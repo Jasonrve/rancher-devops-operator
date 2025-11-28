@@ -60,6 +60,26 @@ builder.Services
 
 var host = builder.Build();
 
+// Log startup configuration (non-sensitive values only)
+var logger = host.Services.GetRequiredService<ILogger<Program>>();
+var config = host.Services.GetRequiredService<IConfiguration>();
+
+logger.LogInformation("=== Rancher DevOps Operator Configuration ===");
+logger.LogInformation("Rancher URL: {Url}", config.GetValue<string>("Rancher:Url", "not-set"));
+logger.LogInformation("Allow Insecure SSL: {AllowInsecureSsl}", config.GetValue<bool>("Rancher:AllowInsecureSsl"));
+logger.LogInformation("Cleanup Namespaces: {CleanupNamespaces}", 
+    config.GetValue<bool>("Rancher:CleanupNamespaces", config.GetValue<bool>("CleanupNamespaces", false)));
+logger.LogInformation("Observe Method: {ObserveMethod}", 
+    config.GetValue<string>("Rancher:ObserveMethod", config.GetValue<string>("ObserveMethod", "watch")));
+logger.LogInformation("Cluster Check Interval: {ClusterCheckInterval} minutes", 
+    config.GetValue<int>("Rancher:ClusterCheckInterval", config.GetValue<int>("ClusterCheckInterval", 5)));
+logger.LogInformation("Polling Interval: {PollingInterval} minutes", 
+    config.GetValue<int>("Rancher:PollingInterval", config.GetValue<int>("PollingInterval", 2)));
+logger.LogInformation("Auth Method: {AuthMethod}", 
+    !string.IsNullOrEmpty(config.GetValue<string>("Rancher:Token")) ? "Token" : 
+    (!string.IsNullOrEmpty(config.GetValue<string>("Rancher:Username")) ? "Username/Password" : "Not configured"));
+logger.LogInformation("=============================================");
+
 // Start Prometheus metrics server
 var metricsServer = new KestrelMetricServer(port: 9090);
 metricsServer.Start();

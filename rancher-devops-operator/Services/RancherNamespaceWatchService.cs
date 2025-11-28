@@ -88,9 +88,13 @@ public class RancherNamespaceWatchService : BackgroundService
                     await PollNamespacesAsync(stoppingToken);
                     await Task.Delay(_pollingInterval, stoppingToken);
                 }
-                else // watch mode
+                else if (_observeMethod == "watch")
                 {
                     await CheckAndUpdateClusterWatchesAsync(stoppingToken);
+                    await Task.Delay(_clusterCheckInterval, stoppingToken);
+                }
+                else // none mode - just wait
+                {
                     await Task.Delay(_clusterCheckInterval, stoppingToken);
                 }
             }
