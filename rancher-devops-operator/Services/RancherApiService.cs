@@ -315,7 +315,7 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Fetching namespace {NamespaceName} in cluster {ClusterId}", namespaceName, clusterId);
+            _logger.LogDebug("Fetching namespace {NamespaceName} in cluster {ClusterId}", namespaceName, clusterId);
             var response = await _httpClient.GetAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", cancellationToken);
             if (!response.IsSuccessStatusCode)
             {

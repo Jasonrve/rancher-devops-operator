@@ -222,7 +222,7 @@ public class ProjectController : IEntityController<V1Project>
                 try
                 {
                     var namespaceName = originalNamespaceName.ToLowerInvariant();
-                    _logger.LogInformation("Processing namespace: {Namespace} for project {ProjectId}", namespaceName, entity.Status.ProjectId);
+                    _logger.LogDebug("Processing namespace: {Namespace} for project {ProjectId}", namespaceName, entity.Status.ProjectId);
                     
                     // Check if namespace exists in Rancher
                     var existingNs = await _rancherApi.GetNamespaceAsync(entity.Status.ClusterId!, namespaceName, cancellationToken);
@@ -247,7 +247,7 @@ public class ProjectController : IEntityController<V1Project>
                         // Namespace exists - check if it's already in our project
                         if (existingNs.ProjectId == entity.Status.ProjectId)
                         {
-                            _logger.LogInformation("Namespace {Namespace} already assigned to this project", namespaceName);
+                            _logger.LogDebug("Namespace {Namespace} already assigned to this project", namespaceName);
                             entity.Status.CreatedNamespaces.Add(namespaceName);
                             namespaceCount++;
                         }
