@@ -29,7 +29,9 @@ public class ProjectController : IEntityController<V1Project>
         _rancherApi = rancherApi;
         _kubernetesClient = kubernetesClient;
         _eventService = eventService;
-        _cleanupNamespaces = configuration.GetValue<bool>("Rancher:CleanupNamespaces", false);
+        // Support both Rancher:CleanupNamespaces and flat CleanupNamespaces
+        _cleanupNamespaces = configuration.GetValue<bool>("Rancher:CleanupNamespaces",
+            configuration.GetValue<bool>("CleanupNamespaces", false));
     }
 
     private async Task<bool> IsNamespaceClaimedByOtherCrdAsync(string namespaceName, string currentCrdName, CancellationToken cancellationToken)

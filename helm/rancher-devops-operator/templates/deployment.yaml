@@ -73,8 +73,6 @@ spec:
             {{- end }}
             - name: Rancher__AllowInsecureSsl
               value: {{ .Values.rancher.allowInsecureSsl | quote }}
-            - name: Rancher__ClusterCheckInterval
-              value: {{ .Values.rancher.clusterCheckInterval | default 5 | quote }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}

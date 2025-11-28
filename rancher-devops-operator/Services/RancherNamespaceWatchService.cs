@@ -47,16 +47,19 @@ public class RancherNamespaceWatchService : BackgroundService
         _rancherApi = rancherApi;
         _eventService = eventService;
         
-        // Check for new clusters every 5 minutes by default
-        var intervalMinutes = configuration.GetValue<int>("Rancher:ClusterCheckInterval", 5);
+        // Check for new clusters every 5 minutes by default (supports both Rancher:* and flat keys)
+        var intervalMinutes = configuration.GetValue<int>("Rancher:ClusterCheckInterval",
+            configuration.GetValue<int>("ClusterCheckInterval", 5));
         _clusterCheckInterval = TimeSpan.FromMinutes(intervalMinutes);
         
         // Polling interval for poll mode (default 2 minutes)
-        var pollMinutes = configuration.GetValue<int>("Rancher:PollingInterval", 2);
+        var pollMinutes = configuration.GetValue<int>("Rancher:PollingInterval",
+            configuration.GetValue<int>("PollingInterval", 2));
         _pollingInterval = TimeSpan.FromMinutes(pollMinutes);
         
-        // Observe method: "watch" (default) or "poll"
-        _observeMethod = configuration.GetValue<string>("Rancher:ObserveMethod", "watch")?.ToLowerInvariant() ?? "watch";
+        // Observe method: "watch" (default), "poll", or "none"
+        _observeMethod = (configuration.GetValue<string>("Rancher:ObserveMethod",
+            configuration.GetValue<string>("ObserveMethod", "watch")) ?? "watch").ToLowerInvariant();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
