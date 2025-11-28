@@ -148,6 +148,14 @@ public class ProjectController : IEntityController<V1Project>
                         if (discoveredNamespaces.Any())
                         {
                             _logger.LogInformation("Discovered {Count} existing namespaces in project {ProjectId}", discoveredNamespaces.Count, existingProject.Id);
+                            // Ensure all discovered namespaces are marked as managed by operator
+                            if (!string.IsNullOrEmpty(entity.Status.ClusterId))
+                            {
+                                foreach (var ns in discoveredNamespaces)
+                                {
+                                    await _rancherApi.EnsureNamespaceManagedByAsync(entity.Status.ClusterId, ns, createdByOperator: false, cancellationToken);
+                                }
+                            }
                             
                             // Only perform initial import when spec has no namespaces
                             if (entity.Spec.Namespaces.Count == 0)

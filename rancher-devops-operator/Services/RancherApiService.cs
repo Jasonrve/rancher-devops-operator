@@ -20,6 +20,7 @@ public interface IRancherApiService
     Task<bool> RemoveNamespaceFromProjectAsync(string clusterId, string namespaceName, CancellationToken cancellationToken);
     Task<List<RancherNamespace>> GetProjectNamespacesAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken);
+    Task<bool> EnsureNamespaceManagedByAsync(string clusterId, string namespaceName, bool createdByOperator, CancellationToken cancellationToken);
     Task<RancherProjectRoleBinding?> CreateProjectMemberAsync(string projectId, string principalId, string role, CancellationToken cancellationToken);
     Task<List<RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken);
@@ -37,6 +38,7 @@ public class RancherApiService : IRancherApiService
     };
     private const string ManagedByKey = "app.kubernetes.io/managed-by";
     private const string ManagedByValue = "rancher-devops-operator";
+    private const string CreatedByKey = "app.kubernetes.io/created-by";
 
     public RancherApiService(
         IHttpClientFactory httpClientFactory, 
@@ -248,7 +250,8 @@ public class RancherApiService : IRancherApiService
                 ProjectId = projectId,
                 Annotations = new Dictionary<string, string>
                 {
-                    [ManagedByKey] = ManagedByValue
+                    [ManagedByKey] = ManagedByValue,
+                    [CreatedByKey] = ManagedByValue
                 },
                 Labels = new Dictionary<string, string>
                 {
@@ -354,16 +357,19 @@ public class RancherApiService : IRancherApiService
                 return null;
             }
 
-            // Update with new projectId, preserving labels
+            // Update with new projectId, preserving labels and annotations
             var updateRequest = new RancherNamespaceRequest
             {
                 Name = namespaceName,
                 ProjectId = newProjectId,
-                Labels = existing.Labels ?? new Dictionary<string, string>()
+                Labels = existing.Labels ?? new Dictionary<string, string>(),
+                Annotations = existing.Annotations ?? new Dictionary<string, string>()
             };
 
             // Ensure managed-by label is set
             updateRequest.Labels[ManagedByKey] = ManagedByValue;
+            // Ensure managed-by annotation is also set for consistency
+            updateRequest.Annotations[ManagedByKey] = ManagedByValue;
 
             var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -402,19 +408,13 @@ public class RancherApiService : IRancherApiService
                 return false;
             }
 
-            // Check if it's managed by us
-            if (existing.Labels == null || !existing.Labels.TryGetValue(ManagedByKey, out var val) || !string.Equals(val, ManagedByValue, StringComparison.Ordinal))
-            {
-                _logger.LogWarning("Namespace {NamespaceName} is not managed by this operator. Cannot remove from project.", namespaceName);
-                return false;
-            }
-
             // Update with empty/null projectId to disassociate
             var updateRequest = new RancherNamespaceRequest
             {
                 Name = namespaceName,
                 ProjectId = string.Empty,
-                Labels = existing.Labels
+                Labels = existing.Labels,
+                Annotations = existing.Annotations
             };
 
             var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
@@ -434,6 +434,82 @@ public class RancherApiService : IRancherApiService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error removing namespace {NamespaceName} from project", namespaceName);
+            return false;
+        }
+    }
+
+    public async Task<bool> EnsureNamespaceManagedByAsync(string clusterId, string namespaceName, bool createdByOperator, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        try
+        {
+            var existing = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
+            if (existing == null)
+            {
+                _logger.LogWarning("Namespace {NamespaceName} not found when ensuring managed-by.", namespaceName);
+                return false;
+            }
+
+            var labels = existing.Labels ?? new Dictionary<string, string>();
+            var annotations = existing.Annotations ?? new Dictionary<string, string>();
+
+            var changed = false;
+            if (!labels.TryGetValue(ManagedByKey, out var lbl) || !string.Equals(lbl, ManagedByValue, StringComparison.Ordinal))
+            {
+                labels[ManagedByKey] = ManagedByValue;
+                changed = true;
+            }
+            if (!annotations.TryGetValue(ManagedByKey, out var ann) || !string.Equals(ann, ManagedByValue, StringComparison.Ordinal))
+            {
+                annotations[ManagedByKey] = ManagedByValue;
+                changed = true;
+            }
+            if (createdByOperator)
+            {
+                if (!annotations.TryGetValue(CreatedByKey, out var cb) || !string.Equals(cb, ManagedByValue, StringComparison.Ordinal))
+                {
+                    annotations[CreatedByKey] = ManagedByValue;
+                    changed = true;
+                }
+            }
+            else
+            {
+                if (!annotations.ContainsKey(CreatedByKey))
+                {
+                    annotations[CreatedByKey] = "imported";
+                    changed = true;
+                }
+            }
+
+            if (!changed)
+            {
+                return true;
+            }
+
+            var updateRequest = new RancherNamespaceRequest
+            {
+                Name = namespaceName,
+                ProjectId = existing.ProjectId ?? string.Empty,
+                Labels = labels,
+                Annotations = annotations
+            };
+
+            var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", content, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Ensure managed-by failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
+
+            _logger.LogDebug("Ensured managed-by/created-by annotations for namespace {NamespaceName}", namespaceName);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ensuring managed-by for namespace {NamespaceName}", namespaceName);
             return false;
         }
     }
