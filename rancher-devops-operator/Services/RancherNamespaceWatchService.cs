@@ -64,6 +64,14 @@ public class RancherNamespaceWatchService : BackgroundService
         _logger.LogInformation("Rancher Namespace Observe Service starting (method: {Method}, cluster check: {ClusterInterval}min, polling: {PollInterval}min)", 
             _observeMethod, _clusterCheckInterval.TotalMinutes, _pollingInterval.TotalMinutes);
 
+        // If observe method is 'none', skip all namespace watching
+        if (_observeMethod == "none")
+        {
+            _logger.LogInformation("Observe method set to 'none' - namespace watching disabled");
+            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+            return;
+        }
+
         // Wait a bit before first run to allow operator to start up
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
@@ -131,7 +139,7 @@ public class RancherNamespaceWatchService : BackgroundService
             .Distinct()
             .ToList();
 
-        _logger.LogInformation("Found {Count} cluster(s) to watch: {Clusters}", 
+        _logger.LogDebug("Found {Count} cluster(s) to watch: {Clusters}", 
             clusterNames.Count, string.Join(", ", clusterNames));
 
         // Start watches for new clusters
@@ -280,7 +288,7 @@ public class RancherNamespaceWatchService : BackgroundService
         {
             try
             {
-                _logger.LogInformation("Starting namespace watch for cluster {ClusterName}", clusterWatch.ClusterName);
+                _logger.LogDebug("Starting namespace watch for cluster {ClusterName}", clusterWatch.ClusterName);
                 
                 // Watch all namespace events in this cluster
                 var watcher = clusterWatch.K8sClient.CoreV1.ListNamespaceWithHttpMessagesAsync(
@@ -300,7 +308,7 @@ public class RancherNamespaceWatchService : BackgroundService
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Watch cancelled for cluster {ClusterName}", clusterWatch.ClusterName);
+                _logger.LogDebug("Watch cancelled for cluster {ClusterName}", clusterWatch.ClusterName);
                 break;
             }
             catch (Exception ex)

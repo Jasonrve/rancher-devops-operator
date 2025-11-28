@@ -63,7 +63,7 @@ public class RancherApiService : IRancherApiService
         var success = false;
         try
         {
-            _logger.LogInformation("Fetching cluster ID for cluster name: {ClusterName}", clusterName);
+            _logger.LogDebug("Fetching cluster ID for cluster name: {ClusterName}", clusterName);
             var response = await _httpClient.GetAsync("/v3/clusters", cancellationToken);
             response.EnsureSuccessStatusCode();
 
@@ -77,7 +77,7 @@ public class RancherApiService : IRancherApiService
                 return null;
             }
 
-            _logger.LogInformation("Found cluster ID: {ClusterId} for name: {ClusterName}", cluster.Id, clusterName);
+            _logger.LogDebug("Found cluster ID: {ClusterId} for name: {ClusterName}", cluster.Id, clusterName);
             success = true;
             return cluster.Id;
         }
@@ -100,7 +100,7 @@ public class RancherApiService : IRancherApiService
         var success = false;
         try
         {
-            _logger.LogInformation("Generating kubeconfig for cluster: {ClusterId}", clusterId);
+            _logger.LogDebug("Generating kubeconfig for cluster: {ClusterId}", clusterId);
             
             var requestBody = new { };
             var jsonContent = JsonSerializer.Serialize(requestBody);
@@ -115,7 +115,7 @@ public class RancherApiService : IRancherApiService
             if (doc.RootElement.TryGetProperty("config", out var configElement))
             {
                 var kubeconfig = configElement.GetString();
-                _logger.LogInformation("Successfully generated kubeconfig for cluster: {ClusterId}", clusterId);
+                _logger.LogDebug("Successfully generated kubeconfig for cluster: {ClusterId}", clusterId);
                 success = true;
                 return kubeconfig;
             }
