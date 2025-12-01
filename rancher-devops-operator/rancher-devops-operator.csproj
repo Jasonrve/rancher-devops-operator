@@ -20,12 +20,29 @@
         <PrivateAssets>all</PrivateAssets>
       </PackageReference>
       <PackageReference Include="KubeOps.Operator" Version="9.11.9" />
+      <PackageReference Include="KubernetesClient" Version="18.0.5" />
       <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.0" />
       <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
       <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
       <PackageReference Include="prometheus-net" Version="8.2.1" />
       <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
       <PackageReference Include="System.Text.Json" Version="10.0.0" />
+    </ItemGroup>
+
+    <!-- Ensure configuration files are published into the container alongside the single-file binary -->
+    <ItemGroup>
+      <Content Include="appsettings.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      </Content>
+      <Content Include="appsettings.Development.json" Condition="Exists('appsettings.Development.json')">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      </Content>
+      <Content Include="appsettings.Production.json" Condition="Exists('appsettings.Production.json')">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      </Content>
     </ItemGroup>
 
 </Project>

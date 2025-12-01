@@ -45,6 +45,10 @@ public class RancherProjectRequest
 
     [JsonPropertyName("resourceQuota")]
     public RancherResourceQuota? ResourceQuota { get; set; }
+
+    // Optional annotations to mark ownership/management
+    [JsonPropertyName("annotations")]
+    public Dictionary<string, string>? Annotations { get; set; }
 }
 
 public class RancherProject
@@ -63,6 +67,9 @@ public class RancherProject
 
     [JsonPropertyName("state")]
     public string State { get; set; } = string.Empty;
+
+    [JsonPropertyName("annotations")]
+    public Dictionary<string, string>? Annotations { get; set; }
 }
 
 public class RancherProjectList
@@ -90,6 +97,13 @@ public class RancherNamespaceRequest
 
     [JsonPropertyName("projectId")]
     public string ProjectId { get; set; } = string.Empty;
+
+    // Optional annotations to mark ownership/management
+    [JsonPropertyName("annotations")]
+    public Dictionary<string, string>? Annotations { get; set; }
+
+    [JsonPropertyName("labels")]
+    public Dictionary<string, string>? Labels { get; set; }
 }
 
 public class RancherNamespace
@@ -105,6 +119,12 @@ public class RancherNamespace
 
     [JsonPropertyName("state")]
     public string State { get; set; } = string.Empty;
+
+    [JsonPropertyName("annotations")]
+    public Dictionary<string, string>? Annotations { get; set; }
+
+    [JsonPropertyName("labels")]
+    public Dictionary<string, string>? Labels { get; set; }
 }
 
 public class RancherNamespaceList

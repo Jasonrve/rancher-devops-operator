@@ -35,34 +35,47 @@ spec:
           env:
             - name: Rancher__Url
               value: {{ .Values.rancher.url | quote }}
-            {{- if or .Values.rancher.token .Values.rancher.existingSecret }}
+            {{- if .Values.rancher.token }}
+            - name: Rancher__Token
+              value: {{ .Values.rancher.token | quote }}
+            {{- end }}
+            {{- if .Values.rancher.username }}
+            - name: Rancher__Username
+              value: {{ .Values.rancher.username | quote }}
+            {{- end }}
+            {{- if .Values.rancher.password }}
+            - name: Rancher__Password
+              value: {{ .Values.rancher.password | quote }}
+            {{- end }}
+            {{- if and .Values.rancher.existingSecret (not .Values.rancher.token) }}
             - name: Rancher__Token
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.rancher.existingSecret | default (printf "%s-rancher" (include "rancher-devops-operator.fullname" .)) }}
+                  name: {{ .Values.rancher.existingSecret }}
                   key: {{ .Values.rancher.existingSecretTokenKey }}
                   optional: true
             {{- end }}
-            {{- if or .Values.rancher.username .Values.rancher.existingSecret }}
+            {{- if and .Values.rancher.existingSecret (not .Values.rancher.username) }}
             - name: Rancher__Username
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.rancher.existingSecret | default (printf "%s-rancher" (include "rancher-devops-operator.fullname" .)) }}
+                  name: {{ .Values.rancher.existingSecret }}
                   key: {{ .Values.rancher.existingSecretUsernameKey }}
                   optional: true
             {{- end }}
-            {{- if or .Values.rancher.password .Values.rancher.existingSecret }}
+            {{- if and .Values.rancher.existingSecret (not .Values.rancher.password) }}
             - name: Rancher__Password
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.rancher.existingSecret | default (printf "%s-rancher" (include "rancher-devops-operator.fullname" .)) }}
+                  name: {{ .Values.rancher.existingSecret }}
                   key: {{ .Values.rancher.existingSecretPasswordKey }}
                   optional: true
             {{- end }}
             - name: Rancher__AllowInsecureSsl
               value: {{ .Values.rancher.allowInsecureSsl | quote }}
-            {{- with .Values.env }}
-            {{- toYaml . | nindent 12 }}
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
             {{- end }}
           ports:
             - name: metrics

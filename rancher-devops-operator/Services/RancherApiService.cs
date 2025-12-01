@@ -10,12 +10,17 @@ namespace rancher_devops_operator.Services;
 public interface IRancherApiService
 {
     Task<string?> GetClusterIdByNameAsync(string clusterName, CancellationToken cancellationToken);
+    Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken);
     Task<RancherProject?> CreateProjectAsync(string clusterId, string projectName, string? description, CancellationToken cancellationToken);
     Task<RancherProject?> GetProjectByNameAsync(string clusterId, string projectName, CancellationToken cancellationToken);
     Task<bool> DeleteProjectAsync(string projectId, CancellationToken cancellationToken);
     Task<RancherNamespace?> CreateNamespaceAsync(string projectId, string namespaceName, CancellationToken cancellationToken);
+    Task<RancherNamespace?> GetNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken);
+    Task<RancherNamespace?> UpdateNamespaceProjectAsync(string clusterId, string namespaceName, string newProjectId, CancellationToken cancellationToken);
+    Task<bool> RemoveNamespaceFromProjectAsync(string clusterId, string namespaceName, CancellationToken cancellationToken);
     Task<List<RancherNamespace>> GetProjectNamespacesAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken);
+    Task<bool> EnsureNamespaceManagedByAsync(string clusterId, string namespaceName, bool createdByOperator, CancellationToken cancellationToken);
     Task<RancherProjectRoleBinding?> CreateProjectMemberAsync(string projectId, string principalId, string role, CancellationToken cancellationToken);
     Task<List<RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken);
@@ -31,6 +36,9 @@ public class RancherApiService : IRancherApiService
     {
         TypeInfoResolver = RancherJsonSerializerContext.Default
     };
+    private const string ManagedByKey = "app.kubernetes.io/managed-by";
+    private const string ManagedByValue = "rancher-devops-operator";
+    private const string CreatedByKey = "app.kubernetes.io/created-by";
 
     public RancherApiService(
         IHttpClientFactory httpClientFactory, 
@@ -57,7 +65,7 @@ public class RancherApiService : IRancherApiService
         var success = false;
         try
         {
-            _logger.LogInformation("Fetching cluster ID for cluster name: {ClusterName}", clusterName);
+            _logger.LogDebug("Fetching cluster ID for cluster name: {ClusterName}", clusterName);
             var response = await _httpClient.GetAsync("/v3/clusters", cancellationToken);
             response.EnsureSuccessStatusCode();
 
@@ -71,7 +79,7 @@ public class RancherApiService : IRancherApiService
                 return null;
             }
 
-            _logger.LogInformation("Found cluster ID: {ClusterId} for name: {ClusterName}", cluster.Id, clusterName);
+            _logger.LogDebug("Found cluster ID: {ClusterId} for name: {ClusterName}", cluster.Id, clusterName);
             success = true;
             return cluster.Id;
         }
@@ -87,6 +95,48 @@ public class RancherApiService : IRancherApiService
         }
     }
 
+    public async Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var success = false;
+        try
+        {
+            _logger.LogDebug("Generating kubeconfig for cluster: {ClusterId}", clusterId);
+            
+            var requestBody = new { };
+            var jsonContent = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+            
+            var response = await _httpClient.PostAsync($"/v3/clusters/{clusterId}?action=generateKubeconfig", content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(responseContent);
+            
+            if (doc.RootElement.TryGetProperty("config", out var configElement))
+            {
+                var kubeconfig = configElement.GetString();
+                _logger.LogDebug("Successfully generated kubeconfig for cluster: {ClusterId}", clusterId);
+                success = true;
+                return kubeconfig;
+            }
+
+            _logger.LogWarning("No kubeconfig found in response for cluster: {ClusterId}", clusterId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating kubeconfig for cluster: {ClusterId}", clusterId);
+            throw;
+        }
+        finally
+        {
+            stopwatch.Stop();
+            MetricsService.RecordApiCall("generate_kubeconfig", success, stopwatch.Elapsed.TotalSeconds);
+        }
+    }
+
     public async Task<RancherProject?> CreateProjectAsync(string clusterId, string projectName, string? description, CancellationToken cancellationToken)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
@@ -98,7 +148,11 @@ public class RancherApiService : IRancherApiService
             {
                 Name = projectName,
                 ClusterId = clusterId,
-                Description = description
+                Description = description,
+                Annotations = new Dictionary<string, string>
+                {
+                    [ManagedByKey] = ManagedByValue
+                }
             };
 
             var json = JsonSerializer.Serialize(projectRequest, RancherJsonSerializerContext.Default.RancherProjectRequest);
@@ -148,6 +202,21 @@ public class RancherApiService : IRancherApiService
         try
         {
             _logger.LogInformation("Deleting project {ProjectId}", projectId);
+            // Verify annotations to ensure we only delete resources managed by this operator
+            var getResponse = await _httpClient.GetAsync($"/v3/projects/{projectId}", cancellationToken);
+            if (!getResponse.IsSuccessStatusCode)
+            {
+                var body = await getResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("Cannot verify ownership for project {ProjectId}. Skipping delete. Status {Status} Body: {Body}", projectId, (int)getResponse.StatusCode, body);
+                return false;
+            }
+            var getJson = await getResponse.Content.ReadAsStringAsync(cancellationToken);
+            var existing = JsonSerializer.Deserialize(getJson, RancherJsonSerializerContext.Default.RancherProject);
+            if (existing?.Annotations == null || !existing.Annotations.TryGetValue(ManagedByKey, out var val) || !string.Equals(val, ManagedByValue, StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Project {ProjectId} is not managed by this operator. Skipping delete.", projectId);
+                return false;
+            }
             var response = await _httpClient.DeleteAsync($"/v3/projects/{projectId}", cancellationToken);
             response.EnsureSuccessStatusCode();
             _logger.LogInformation("Deleted project {ProjectId}", projectId);
@@ -178,7 +247,16 @@ public class RancherApiService : IRancherApiService
             var namespaceRequest = new RancherNamespaceRequest
             {
                 Name = namespaceName,
-                ProjectId = projectId
+                ProjectId = projectId,
+                Annotations = new Dictionary<string, string>
+                {
+                    [ManagedByKey] = ManagedByValue,
+                    [CreatedByKey] = ManagedByValue
+                },
+                Labels = new Dictionary<string, string>
+                {
+                    [ManagedByKey] = ManagedByValue
+                }
             };
 
             var json = JsonSerializer.Serialize(namespaceRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
@@ -235,12 +313,228 @@ public class RancherApiService : IRancherApiService
         }
     }
 
+    public async Task<RancherNamespace?> GetNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        try
+        {
+            _logger.LogDebug("Fetching namespace {NamespaceName} in cluster {ClusterId}", namespaceName, clusterId);
+            var response = await _httpClient.GetAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    return null;
+                }
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Namespace get failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
+
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            var ns = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherNamespace);
+            return ns;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching namespace {NamespaceName}", namespaceName);
+            throw;
+        }
+    }
+
+    public async Task<RancherNamespace?> UpdateNamespaceProjectAsync(string clusterId, string namespaceName, string newProjectId, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        try
+        {
+            _logger.LogInformation("Updating namespace {NamespaceName} to project {ProjectId}", namespaceName, newProjectId);
+            
+            // Fetch existing namespace first
+            var existing = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
+            if (existing == null)
+            {
+                _logger.LogWarning("Namespace {NamespaceName} not found", namespaceName);
+                return null;
+            }
+
+            // Update with new projectId, preserving labels and annotations
+            var updateRequest = new RancherNamespaceRequest
+            {
+                Name = namespaceName,
+                ProjectId = newProjectId,
+                Labels = existing.Labels ?? new Dictionary<string, string>(),
+                Annotations = existing.Annotations ?? new Dictionary<string, string>()
+            };
+
+            // Ensure managed-by label is set
+            updateRequest.Labels[ManagedByKey] = ManagedByValue;
+            // Ensure managed-by annotation is also set for consistency
+            updateRequest.Annotations[ManagedByKey] = ManagedByValue;
+
+            var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", content, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Namespace update failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
+
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            var updated = JsonSerializer.Deserialize(responseContent, RancherJsonSerializerContext.Default.RancherNamespace);
+            _logger.LogInformation("Updated namespace {NamespaceName} to project {ProjectId}", namespaceName, newProjectId);
+            return updated;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating namespace {NamespaceName}", namespaceName);
+            throw;
+        }
+    }
+
+    public async Task<bool> RemoveNamespaceFromProjectAsync(string clusterId, string namespaceName, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        try
+        {
+            _logger.LogInformation("Removing namespace {NamespaceName} from its project", namespaceName);
+            
+            var existing = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
+            if (existing == null)
+            {
+                _logger.LogWarning("Namespace {NamespaceName} not found", namespaceName);
+                return false;
+            }
+
+            // Update with empty/null projectId to disassociate
+            var updateRequest = new RancherNamespaceRequest
+            {
+                Name = namespaceName,
+                ProjectId = string.Empty,
+                Labels = existing.Labels,
+                Annotations = existing.Annotations
+            };
+
+            var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", content, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Namespace project removal failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
+
+            _logger.LogInformation("Removed namespace {NamespaceName} from project", namespaceName);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing namespace {NamespaceName} from project", namespaceName);
+            return false;
+        }
+    }
+
+    public async Task<bool> EnsureNamespaceManagedByAsync(string clusterId, string namespaceName, bool createdByOperator, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        try
+        {
+            var existing = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
+            if (existing == null)
+            {
+                _logger.LogWarning("Namespace {NamespaceName} not found when ensuring managed-by.", namespaceName);
+                return false;
+            }
+
+            var labels = existing.Labels ?? new Dictionary<string, string>();
+            var annotations = existing.Annotations ?? new Dictionary<string, string>();
+
+            var changed = false;
+            if (!labels.TryGetValue(ManagedByKey, out var lbl) || !string.Equals(lbl, ManagedByValue, StringComparison.Ordinal))
+            {
+                labels[ManagedByKey] = ManagedByValue;
+                changed = true;
+            }
+            if (!annotations.TryGetValue(ManagedByKey, out var ann) || !string.Equals(ann, ManagedByValue, StringComparison.Ordinal))
+            {
+                annotations[ManagedByKey] = ManagedByValue;
+                changed = true;
+            }
+            if (createdByOperator)
+            {
+                if (!annotations.TryGetValue(CreatedByKey, out var cb) || !string.Equals(cb, ManagedByValue, StringComparison.Ordinal))
+                {
+                    annotations[CreatedByKey] = ManagedByValue;
+                    changed = true;
+                }
+            }
+            else
+            {
+                if (!annotations.ContainsKey(CreatedByKey))
+                {
+                    annotations[CreatedByKey] = "imported";
+                    changed = true;
+                }
+            }
+
+            if (!changed)
+            {
+                return true;
+            }
+
+            var updateRequest = new RancherNamespaceRequest
+            {
+                Name = namespaceName,
+                ProjectId = existing.ProjectId ?? string.Empty,
+                Labels = labels,
+                Annotations = annotations
+            };
+
+            var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", content, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("Ensure managed-by failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
+                response.EnsureSuccessStatusCode();
+            }
+
+            _logger.LogDebug("Ensured managed-by/created-by annotations for namespace {NamespaceName}", namespaceName);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ensuring managed-by for namespace {NamespaceName}", namespaceName);
+            return false;
+        }
+    }
+
     public async Task<bool> DeleteNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Deleting namespace {NamespaceName} in cluster {ClusterId}", namespaceName, clusterId);
+            // Verify annotations to ensure we only delete namespaces managed by this operator
+            var getResponse = await _httpClient.GetAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", cancellationToken);
+            if (!getResponse.IsSuccessStatusCode)
+            {
+                var body = await getResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning("Cannot verify ownership for namespace {Namespace}. Skipping delete. Status {Status} Body: {Body}", namespaceName, (int)getResponse.StatusCode, body);
+                return false;
+            }
+            var getJson = await getResponse.Content.ReadAsStringAsync(cancellationToken);
+            var existing = JsonSerializer.Deserialize(getJson, RancherJsonSerializerContext.Default.RancherNamespace);
+            if (existing?.Annotations == null || !existing.Annotations.TryGetValue(ManagedByKey, out var val) || !string.Equals(val, ManagedByValue, StringComparison.Ordinal))
+            {
+                _logger.LogWarning("Namespace {Namespace} is not managed by this operator. Skipping delete.", namespaceName);
+                return false;
+            }
             var response = await _httpClient.DeleteAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", cancellationToken);
             response.EnsureSuccessStatusCode();
             _logger.LogInformation("Deleted namespace {NamespaceName}", namespaceName);
@@ -258,7 +552,7 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Adding member {PrincipalId} with role {Role} to project {ProjectId}", principalId, role, projectId);
+            _logger.LogDebug("Adding member {PrincipalId} with role {Role} to project {ProjectId}", principalId, role, projectId);
 
             var bindingRequest = new RancherProjectRoleBindingRequest
             {
@@ -300,7 +594,7 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Fetching members for project {ProjectId}", projectId);
+            _logger.LogDebug("Fetching members for project {ProjectId}", projectId);
             var response = await _httpClient.GetAsync($"/v3/projectRoleTemplateBindings?projectId={projectId}", cancellationToken);
             response.EnsureSuccessStatusCode();
 

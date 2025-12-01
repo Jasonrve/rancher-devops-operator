@@ -1,0 +1,39 @@
+apiVersion: rancher.devops.io/v1
+kind: Project
+metadata:
+  name: monitored-project
+spec:
+  # Observe-only mode: track existing project without modifications
+  managementPolicies:
+    - Observe
+  
+  # Must match the exact display name of an existing Rancher project
+  clusterName: "local"
+  displayName: "Production Project"
+  
+  # Leave empty - will be auto-populated from Rancher
+  namespaces: []
+  members: []
+
+---
+# Example: Observe with ability to add new resources
+apiVersion: rancher.devops.io/v1
+kind: Project
+metadata:
+  name: hybrid-project
+spec:
+  # Observe existing + allow creating new namespaces/members
+  managementPolicies:
+    - Observe
+    - Create
+  
+  clusterName: "local"
+  displayName: "Staging Project"
+  
+  # Initial discovery will populate these with existing resources
+  # You can then add new entries which will be created in Rancher
+  namespaces:
+    - new-staging-namespace  # Will be created
+  members:
+    - principalName: "newuser"  # Will be added to project
+      role: "project-member"

@@ -40,10 +40,22 @@ public class V1Project : CustomKubernetesEntity<V1Project.ProjectSpec, V1Project
         public ResourceQuota? ResourceQuota { get; set; }
 
         /// <summary>
-        /// Management policies controlling allowed actions (e.g., "Observe", "Create", "Delete").
-        /// If omitted, defaults to ["Observe","Create","Delete"].
+        /// Management policies controlling allowed actions: "Create", "Delete", "Observe".
+        /// If omitted or empty, defaults to ["Create"] (Delete/Observe are opt-in).
+        /// - Create: Allows creating projects/namespaces/members
+        /// - Delete: Allows deleting projects and removing namespace associations
+        /// - Observe: Discovers and adds existing namespaces/members from project to CRD spec
         /// </summary>
-        public List<string> ManagementPolicies { get; set; } = new();
+        public List<string> ManagementPolicies { get; set; } = new(){ "Create" };
+
+        /// <summary>
+        /// Namespace-specific management policies controlling namespace actions: "Create", "Update", "Delete".
+        /// If omitted or empty, defaults to ["Create", "Update"] (Delete is opt-in).
+        /// - Create: Allows creating namespaces
+        /// - Update: Allows (re)assigning namespaces into or out of the Rancher project (disassociation/move)
+        /// - Delete: Allows deleting namespaces ONLY when controller CleanupNamespaces=true (otherwise acts like Update)
+        /// </summary>
+        public List<string> NamespaceManagementPolicies { get; set; } = new() { "Create", "Update" };
     }
 
     public class ProjectMember
@@ -90,14 +102,29 @@ public class V1Project : CustomKubernetesEntity<V1Project.ProjectSpec, V1Project
         public string Phase { get; set; } = "Pending";
 
         /// <summary>
-        /// List of created namespaces
+        /// List of namespaces created by the operator (not merely assigned or moved)
         /// </summary>
         public List<string> CreatedNamespaces { get; set; } = new();
+
+        /// <summary>
+        /// List of namespaces that were manually removed (cluster/Rancher UI) and should NOT be recreated even if present in spec
+        /// </summary>
+        public List<string> ManuallyRemovedNamespaces { get; set; } = new();
 
         /// <summary>
         /// Last reconciliation time
         /// </summary>
         public DateTime? LastReconcileTime { get; set; }
+
+        /// <summary>
+        /// Timestamp when the controller first successfully created or took over the project
+        /// </summary>
+        public DateTime? CreatedTimestamp { get; set; }
+
+        /// <summary>
+        /// Timestamp of last successful status update (end of reconcile)
+        /// </summary>
+        public DateTime? LastUpdatedTimestamp { get; set; }
 
         /// <summary>
         /// Error message if any
