@@ -413,12 +413,12 @@ public class RancherApiService : IRancherApiService
 
             // Use Rancher's namespace move action endpoint to disassociate from project
             // Setting projectId to empty string removes the project association
-            var moveRequest = new
+            var moveRequest = new RancherNamespaceMoveRequest
             {
-                projectId = ""
+                ProjectId = ""
             };
 
-            var json = JsonSerializer.Serialize(moveRequest, _jsonOptions);
+            var json = JsonSerializer.Serialize(moveRequest, RancherJsonSerializerContext.Default.RancherNamespaceMoveRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}?action=move", content, cancellationToken);

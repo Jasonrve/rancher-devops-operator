@@ -195,3 +195,9 @@ public class RancherPrincipalList
     [JsonPropertyName("data")]
     public List<RancherPrincipal> Data { get; set; } = new();
 }
+
+public class RancherNamespaceMoveRequest
+{
+    [JsonPropertyName("projectId")]
+    public string ProjectId { get; set; } = string.Empty;
+}
