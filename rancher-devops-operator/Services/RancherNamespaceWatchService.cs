@@ -322,23 +322,36 @@ public class RancherNamespaceWatchService : BackgroundService
             {
                 _logger.LogDebug("Starting namespace watch for cluster {ClusterName}", clusterWatch.ClusterName);
                 
-                // Watch all namespace events in this cluster
-                var watcher = clusterWatch.K8sClient.CoreV1.ListNamespaceWithHttpMessagesAsync(
+                // Use current client Watch API with localized suppression until package upgrade
+                var httpResponse = await clusterWatch.K8sClient.CoreV1.ListNamespaceWithHttpMessagesAsync(
                     watch: true,
                     cancellationToken: cancellationToken);
 
-                await foreach (var (type, item) in watcher.WatchAsync<V1Namespace, V1NamespaceList>(cancellationToken: cancellationToken))
+#pragma warning disable CS0618 // Suppress until KubernetesClient exposes non-obsolete watch API here
+                using (httpResponse.Watch<V1Namespace, V1NamespaceList>(
+                    onEvent: (type, item) =>
+                    {
+                        if (type == WatchEventType.Added || type == WatchEventType.Modified)
+                        {
+                            _ = HandleNamespaceEventAsync(clusterWatch.ClusterName, item, cancellationToken);
+                        }
+                        else if (type == WatchEventType.Deleted)
+                        {
+                            _ = HandleNamespaceDeletedEventAsync(clusterWatch.ClusterName, item, cancellationToken);
+                        }
+                    },
+                    onError: e =>
+                    {
+                        _logger.LogError(e, "Error in namespace watch for cluster {ClusterName}", clusterWatch.ClusterName);
+                    },
+                    onClosed: () =>
+                    {
+                        _logger.LogWarning("Namespace watch closed for cluster {ClusterName}", clusterWatch.ClusterName);
+                    }))
                 {
-                    if (type == WatchEventType.Added || type == WatchEventType.Modified)
-                    {
-                        await HandleNamespaceEventAsync(clusterWatch.ClusterName, item, cancellationToken);
-                    }
-                    else if (type == WatchEventType.Deleted)
-                    {
-                        await HandleNamespaceDeletedEventAsync(clusterWatch.ClusterName, item, cancellationToken);
-                    }
+                    await Task.Delay(Timeout.Infinite, cancellationToken);
                 }
-                
+#pragma warning restore CS0618
                 _logger.LogWarning("Namespace watch ended for cluster {ClusterName}, will reconnect", clusterWatch.ClusterName);
             }
             catch (OperationCanceledException)

@@ -39,6 +39,7 @@ public class RancherApiService : IRancherApiService
     private const string ManagedByKey = "app.kubernetes.io/managed-by";
     private const string ManagedByValue = "rancher-devops-operator";
     private const string CreatedByKey = "app.kubernetes.io/created-by";
+    private const string RancherProjectAnnotationKey = "field.cattle.io/projectId";
 
     public RancherApiService(
         IHttpClientFactory httpClientFactory, 
@@ -370,6 +371,8 @@ public class RancherApiService : IRancherApiService
             updateRequest.Labels[ManagedByKey] = ManagedByValue;
             // Ensure managed-by annotation is also set for consistency
             updateRequest.Annotations[ManagedByKey] = ManagedByValue;
+            // Ensure Rancher project annotation reflects the new project
+            updateRequest.Annotations[RancherProjectAnnotationKey] = newProjectId;
 
             var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -399,7 +402,7 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Removing namespace {NamespaceName} from its project", namespaceName);
+            _logger.LogInformation("Removing namespace {NamespaceName} from its project using Rancher move action", namespaceName);
             
             var existing = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
             if (existing == null)
@@ -408,27 +411,37 @@ public class RancherApiService : IRancherApiService
                 return false;
             }
 
-            // Update with empty/null projectId to disassociate
-            var updateRequest = new RancherNamespaceRequest
+            // Use Rancher's namespace move action endpoint to disassociate from project
+            // Setting projectId to empty string removes the project association
+            var moveRequest = new RancherNamespaceMoveRequest
             {
-                Name = namespaceName,
-                ProjectId = string.Empty,
-                Labels = existing.Labels,
-                Annotations = existing.Annotations
+                ProjectId = ""
             };
 
-            var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
+            var json = JsonSerializer.Serialize(moveRequest, RancherJsonSerializerContext.Default.RancherNamespaceMoveRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", content, cancellationToken);
+            var response = await _httpClient.PostAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}?action=move", content, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Namespace project removal failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
+                _logger.LogError("Namespace move action failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
                 response.EnsureSuccessStatusCode();
             }
 
-            _logger.LogInformation("Removed namespace {NamespaceName} from project", namespaceName);
+            // Verify disassociation
+            var verify = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
+            var stillAssociated = verify != null && (!string.IsNullOrEmpty(verify.ProjectId) || (verify.Annotations != null && verify.Annotations.ContainsKey(RancherProjectAnnotationKey)));
+            if (stillAssociated)
+            {
+                _logger.LogWarning("Namespace {NamespaceName} still shows project association after move action: ProjectId={ProjectId}, Annotation={HasAnnotation}", 
+                    namespaceName, verify?.ProjectId, verify?.Annotations?.ContainsKey(RancherProjectAnnotationKey));
+            }
+            else
+            {
+                _logger.LogInformation("Successfully removed namespace {NamespaceName} from project", namespaceName);
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -633,21 +646,31 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Resolving principal name {PrincipalName}", principalName);
-            var encoded = Uri.EscapeDataString(principalName);
-            var response = await _httpClient.GetAsync($"/v3/principals?name={encoded}", cancellationToken);
+            _logger.LogInformation("Searching principal name {PrincipalName} via Rancher search API", principalName);
+
+            var payload = new
+            {
+                name = principalName,
+                principalType = (string?)null
+            };
+
+            var json = JsonSerializer.Serialize(payload, _jsonOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("/v3/principals?action=search", content, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Failed to lookup principal {PrincipalName} status {Status}: {Body}", principalName, (int)response.StatusCode, body);
+                _logger.LogWarning("Principal search failed for {PrincipalName} status {Status}: {Body}", principalName, (int)response.StatusCode, body);
                 return null;
             }
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var list = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherPrincipalList);
+
+            var respContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            var list = JsonSerializer.Deserialize(respContent, RancherJsonSerializerContext.Default.RancherPrincipalList);
             var match = list?.Data.FirstOrDefault(p => p.Name.Equals(principalName, StringComparison.OrdinalIgnoreCase));
             if (match == null)
             {
-                _logger.LogWarning("Principal name {PrincipalName} not found", principalName);
+                _logger.LogWarning("Principal name {PrincipalName} not found in search results", principalName);
                 return null;
             }
             _logger.LogInformation("Resolved principal name {PrincipalName} to ID {PrincipalId}", principalName, match.Id);
@@ -655,7 +678,7 @@ public class RancherApiService : IRancherApiService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error resolving principal name {PrincipalName}", principalName);
+            _logger.LogError(ex, "Error searching principal name {PrincipalName}", principalName);
             return null;
         }
     }

@@ -96,7 +96,7 @@ public class RancherNamespaceRequest
     public string Name { get; set; } = string.Empty;
 
     [JsonPropertyName("projectId")]
-    public string ProjectId { get; set; } = string.Empty;
+    public string? ProjectId { get; set; }
 
     // Optional annotations to mark ownership/management
     [JsonPropertyName("annotations")]
@@ -194,4 +194,10 @@ public class RancherPrincipalList
 {
     [JsonPropertyName("data")]
     public List<RancherPrincipal> Data { get; set; } = new();
+}
+
+public class RancherNamespaceMoveRequest
+{
+    [JsonPropertyName("projectId")]
+    public string ProjectId { get; set; } = string.Empty;
 }

@@ -433,20 +433,38 @@ public class ProjectController : IEntityController<V1Project>
             }
             MetricsService.ActiveNamespaces.Set(namespaceCount);
 
-            // Detect namespaces in spec that disappeared from project and mark as manually removed (only if they were previously created by operator)
+            // Detect namespaces in spec that disappeared from project and mark as manually removed
             try
             {
                 if (!string.IsNullOrEmpty(entity.Status.ProjectId) && currentProjectNamespaces.Count > 0)
                 {
                     var desired = entity.Spec.Namespaces.Select(n => n.ToLowerInvariant()).ToHashSet();
+                    var newlyManuallyRemoved = new List<string>();
                     foreach (var desiredNs in desired)
                     {
                         if (!currentProjectNamespaces.Contains(desiredNs) && !manuallyRemovedSet.Contains(desiredNs))
                         {
-                            // Only auto-mark if we had previously created it (present in old CreatedNamespaces list retained before clear?)
-                            // Since we cleared CreatedNamespaces for fresh reconcile, rely on ManuallyRemovedNamespaces persistence only.
-                            // For now, do not auto-add; feature can be expanded later.
+                            newlyManuallyRemoved.Add(desiredNs);
                         }
+                    }
+
+                    if (newlyManuallyRemoved.Count > 0)
+                    {
+                        entity.Status.ManuallyRemovedNamespaces ??= new List<string>();
+                        foreach (var ns in newlyManuallyRemoved)
+                        {
+                            // add if still not present to avoid races
+                            if (!entity.Status.ManuallyRemovedNamespaces.Any(n => n.Equals(ns, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                entity.Status.ManuallyRemovedNamespaces.Add(ns);
+                                _logger.LogInformation("Namespace {Namespace} appears removed outside operator; marking as manually removed.", ns);
+                                await _eventService.CreateEventAsync(entity, "NamespaceManuallyRemoved",
+                                    $"Detected missing namespace '{ns}' compared to spec; marking as manually removed to avoid recreation.",
+                                    "Normal", cancellationToken);
+                            }
+                        }
+                        // persist status update with retry
+                        await UpdateStatusWithRetryAsync(entity, cancellationToken);
                     }
                 }
             }
