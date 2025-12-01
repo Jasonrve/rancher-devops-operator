@@ -415,23 +415,7 @@ Notes:
 
 ### Manual Removals: Prevent Recreation
 
-If a namespace is removed directly in Rancher or Kubernetes, the operator marks it as manually removed to avoid recreating it. You can also manage the list yourself.
-
-Add namespaces to the manually removed list:
-
-```sh
-kubectl patch projects.rancher.devops.io my-project \
-  --type=merge --subresource=status \
-  -p '{"status":{"manuallyRemovedNamespaces":["team-a","team-b"]}}'
-```
-
-Remove a namespace from the list (resume management on next reconcile):
-
-```sh
-kubectl patch projects.rancher.devops.io my-project \
-  --type=merge --subresource=status \
-  -p '{"status":{"manuallyRemovedNamespaces":["team-b"]}}'
-```
+If a namespace is removed directly in Rancher or Kubernetes, the operator marks it as manually removed to avoid recreating it.
 
 Notes:
 - When a name exists in `status.manuallyRemovedNamespaces`, the operator skips creation/assignment for that namespace even if present in `spec.namespaces`.
