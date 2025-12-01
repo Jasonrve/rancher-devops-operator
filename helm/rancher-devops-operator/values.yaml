@@ -3,6 +3,7 @@ image:
   repository: ghcr.io/jasonrve/rancher-devops-operator
   pullPolicy: Always
   tag: 0.4.0
+  tag: 0.4.0
 imagePullSecrets: []
 nameOverride: ''
 fullnameOverride: ''
