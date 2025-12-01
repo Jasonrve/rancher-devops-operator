@@ -170,13 +170,20 @@ spec:
 
 ### Management Policy Examples
 
-**Default Behavior (Create and Delete)**
+**Default Behavior (Create-only)**
 ```yaml
 # Omit managementPolicies or leave empty for default
 spec:
   clusterName: "local"
   displayName: "My Project"
-  # Creates project/namespaces/members and allows deletion
+  # Creates project/namespaces/members. Deletion and removals require explicit policy.
+  # To allow deletions (project deletion, member removals, namespace disassociation/deletion), add:
+  # managementPolicies:
+  #   - Delete
+  # Namespace-specific behavior can be controlled separately:
+  # namespaceManagementPolicies:
+  #   - Create        # default when omitted
+  #   # - Delete      # enables namespace disassociation (and deletion only when CleanupNamespaces=true)
 ```
 
 **Take Over Existing Project (with Observe)**
@@ -187,7 +194,7 @@ spec:
   managementPolicies:
     - Observe  # Discovers and adds existing namespaces/members to CRD
     - Create
-    - Delete
+    # - Delete
   namespaces: []  # Will be populated automatically
   members: []     # Will be populated automatically
 ```
@@ -384,11 +391,15 @@ kubectl get events --field-selector source=rancher-devops-operator
 ### Namespace Cleanup Behavior
 
 By default (`CleanupNamespaces=false`), namespaces are **never deleted**. When a namespace is removed from a Project CRD spec:
-- The namespace is disassociated from the project
+- The namespace is disassociated from the project only if `namespaceManagementPolicies` includes `Delete`
 - The namespace itself remains in the cluster
 - Workloads continue running
 
-When `CleanupNamespaces=true`, namespaces are **deleted** when removed from the CRD spec or when the CRD is deleted. This includes deleting all resources within the namespace.
+When `CleanupNamespaces=true` and `namespaceManagementPolicies` includes `Delete`, namespaces are **deleted** when removed from the CRD spec or when the CRD is deleted. This includes deleting all resources within the namespace.
+
+Notes:
+- Use `namespaceManagementPolicies` to control namespace create vs delete independently of project/member policies.
+- `namespaceManagementPolicies` defaults to `Create` when omitted. Add `Delete` to enable disassociation and (optional) deletion.
 
 ### Rancher API Token
 

@@ -25,6 +25,8 @@ public class RancherNamespaceWatchService : BackgroundService
     private readonly string _observeMethod;
     private readonly Dictionary<string, ClusterWatch> _activeWatches = new();
     private readonly object _watchesLock = new();
+    // Cache of last seen namespaces per cluster for poll-based deletion detection
+    private readonly Dictionary<string, HashSet<string>> _clusterNamespaceCache = new(StringComparer.OrdinalIgnoreCase);
 
     private class ClusterWatch
     {
@@ -268,12 +270,28 @@ public class RancherNamespaceWatchService : BackgroundService
             try
             {
                 // List all namespaces in this cluster
-                var namespaces = await clusterWatch.K8sClient.CoreV1.ListNamespaceAsync(cancellationToken: cancellationToken);
-                
-                foreach (var ns in namespaces.Items)
+                var list = await clusterWatch.K8sClient.CoreV1.ListNamespaceAsync(cancellationToken: cancellationToken);
+                var currentSet = new HashSet<string>(list.Items.Select(i => i.Metadata.Name!).Where(n => !string.IsNullOrEmpty(n)), StringComparer.OrdinalIgnoreCase);
+
+                // Process existing namespaces (Added/Modified equivalent)
+                foreach (var ns in list.Items)
                 {
                     await ProcessNamespaceForProjectsAsync(clusterName, ns, clusterGroup.ToList(), cancellationToken);
                 }
+
+                // Detect deletions using previous snapshot
+                if (_clusterNamespaceCache.TryGetValue(clusterName, out var previousSet))
+                {
+                    var deleted = previousSet.Except(currentSet).ToList();
+                    foreach (var deletedName in deleted)
+                    {
+                        // We cannot retrieve annotations for deleted namespace, pass null projectId
+                        await MarkNamespaceManuallyRemovedAsync(clusterName, deletedName, projectId: null, cancellationToken);
+                    }
+                }
+
+                // Update cache
+                _clusterNamespaceCache[clusterName] = currentSet;
             }
             catch (Exception ex)
             {
@@ -311,10 +329,13 @@ public class RancherNamespaceWatchService : BackgroundService
 
                 await foreach (var (type, item) in watcher.WatchAsync<V1Namespace, V1NamespaceList>(cancellationToken: cancellationToken))
                 {
-                    // Only process Added and Modified events
                     if (type == WatchEventType.Added || type == WatchEventType.Modified)
                     {
                         await HandleNamespaceEventAsync(clusterWatch.ClusterName, item, cancellationToken);
+                    }
+                    else if (type == WatchEventType.Deleted)
+                    {
+                        await HandleNamespaceDeletedEventAsync(clusterWatch.ClusterName, item, cancellationToken);
                     }
                 }
                 
@@ -359,6 +380,81 @@ public class RancherNamespaceWatchService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling namespace watch event");
+        }
+    }
+
+    private async Task HandleNamespaceDeletedEventAsync(string clusterName, V1Namespace ns, CancellationToken cancellationToken)
+    {
+        var namespaceName = ns.Metadata?.Name;
+        if (string.IsNullOrEmpty(namespaceName)) return;
+        string? projectId = null;
+        if (ns.Metadata?.Annotations != null && ns.Metadata.Annotations.TryGetValue("field.cattle.io/projectId", out var projId))
+        {
+            projectId = projId;
+        }
+        await MarkNamespaceManuallyRemovedAsync(clusterName, namespaceName, projectId, cancellationToken);
+    }
+
+    private async Task MarkNamespaceManuallyRemovedAsync(string clusterName, string namespaceName, string? projectId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var projects = await GetObserveProjectsAsync(cancellationToken);
+            var relevantProjects = projects
+                .Where(p => string.Equals(p.Spec.ClusterName, clusterName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (!relevantProjects.Any()) return;
+
+            foreach (var project in relevantProjects)
+            {
+                if (!string.IsNullOrEmpty(projectId) && project.Status?.ProjectId != projectId)
+                {
+                    continue; // projectId known and does not match
+                }
+                if (!project.Spec.Namespaces.Any(n => n.Equals(namespaceName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue; // namespace not declared in spec
+                }
+                var existingRemoved = project.Status?.ManuallyRemovedNamespaces ?? new List<string>();
+                if (existingRemoved.Any(n => n.Equals(namespaceName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue; // already marked
+                }
+
+                var maxRetries = 3;
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    try
+                    {
+                        var latest = await _kubernetesClient.GetAsync<V1Project>(project.Metadata.Name, cancellationToken: cancellationToken);
+                        if (latest == null) break;
+                        latest.Status ??= new V1Project.ProjectStatus();
+                        latest.Status.ManuallyRemovedNamespaces ??= new List<string>();
+                        if (!latest.Status.ManuallyRemovedNamespaces.Any(n => n.Equals(namespaceName, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            latest.Status.ManuallyRemovedNamespaces.Add(namespaceName);
+                        }
+                        await _kubernetesClient.UpdateStatusAsync(latest, cancellationToken);
+                        await _eventService.CreateEventAsync(latest, "NamespaceManuallyRemoved",
+                            $"Detected deletion of namespace '{namespaceName}'; marking as manually removed to avoid recreation.",
+                            "Normal", cancellationToken);
+                        _logger.LogInformation("Marked namespace {Namespace} as manually removed in project {Project}", namespaceName, latest.Metadata.Name);
+                        break;
+                    }
+                    catch (Exception ex) when (ex.Message.Contains("409") || ex.Message.Contains("Conflict"))
+                    {
+                        if (attempt == maxRetries)
+                        {
+                            _logger.LogWarning(ex, "Failed to update status for {Project} after {Retries} attempts", project.Metadata.Name, maxRetries);
+                        }
+                        await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt), cancellationToken);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error marking namespace manually removed");
         }
     }
 

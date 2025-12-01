@@ -59,19 +59,92 @@ public class ProjectController : IEntityController<V1Project>
         }
     }
 
+    private async Task UpdateEntityWithRetryAsync(V1Project entity, CancellationToken cancellationToken)
+    {
+        var maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                await _kubernetesClient.UpdateAsync(entity, cancellationToken);
+                return;
+            }
+            catch (Exception ex) when (ex.Message.Contains("409") || ex.Message.Contains("Conflict"))
+            {
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, "Failed to update CRD {Name} after {Retries} attempts due to conflicts", entity.Metadata.Name, maxRetries);
+                    throw;
+                }
+                _logger.LogWarning("Conflict updating CRD {Name} (attempt {Attempt}/{Max}), refetching and retrying", entity.Metadata.Name, attempt, maxRetries);
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt), cancellationToken);
+                var refetched = await _kubernetesClient.GetAsync<V1Project>(entity.Metadata.Name, cancellationToken: cancellationToken);
+                if (refetched == null)
+                {
+                    _logger.LogError("Failed to refetch CRD {Name} for retry", entity.Metadata.Name);
+                    throw;
+                }
+                // Merge desired spec/status from original into the refetched instance
+                refetched.Spec = entity.Spec;
+                refetched.Status = entity.Status;
+                entity = refetched;
+            }
+        }
+    }
+
+    private async Task UpdateStatusWithRetryAsync(V1Project entity, CancellationToken cancellationToken)
+    {
+        var maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
+                return;
+            }
+            catch (Exception ex) when (ex.Message.Contains("409") || ex.Message.Contains("Conflict"))
+            {
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, "Failed to update status for CRD {Name} after {Retries} attempts due to conflicts", entity.Metadata.Name, maxRetries);
+                    throw;
+                }
+                _logger.LogWarning("Conflict updating status for CRD {Name} (attempt {Attempt}/{Max}), refetching and retrying", entity.Metadata.Name, attempt, maxRetries);
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt), cancellationToken);
+                var refetched = await _kubernetesClient.GetAsync<V1Project>(entity.Metadata.Name, cancellationToken: cancellationToken);
+                if (refetched == null)
+                {
+                    _logger.LogError("Failed to refetch CRD {Name} for status retry", entity.Metadata.Name);
+                    throw;
+                }
+                // Carry over desired status changes into refetched entity
+                refetched.Status = entity.Status;
+                entity = refetched;
+            }
+        }
+    }
+
     public async Task ReconcileAsync(V1Project entity, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
         var success = false;
         
-        // Default to Create and Delete if ManagementPolicies is empty (Observe is opt-in)
+        // Default to Create-only if ManagementPolicies is empty (Delete/Observe are opt-in)
         bool Allows(string name) => (entity.Spec.ManagementPolicies == null || entity.Spec.ManagementPolicies.Count == 0)
-            ? (name == "Create" || name == "Delete")
+            ? (name == "Create")
             : entity.Spec.ManagementPolicies.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase));
         
         var allowCreate = Allows("Create");
         var allowDelete = Allows("Delete");
         var allowObserve = Allows("Observe");
+
+        // Namespace-specific policies: default Create+Update when list is empty (Delete opt-in)
+        bool NsAllows(string name) => (entity.Spec.NamespaceManagementPolicies == null || entity.Spec.NamespaceManagementPolicies.Count == 0)
+            ? (name == "Create" || name == "Update")
+            : entity.Spec.NamespaceManagementPolicies.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase));
+        var allowNamespaceCreate = NsAllows("Create");
+        var allowNamespaceUpdate = NsAllows("Update");
+        var allowNamespaceDelete = NsAllows("Delete");
 
         try
         {
@@ -169,8 +242,8 @@ public class ProjectController : IEntityController<V1Project>
                                     }
                                 }
                                 
-                                // Update the CRD spec
-                                await _kubernetesClient.UpdateAsync(entity, cancellationToken);
+                                // Update the CRD spec with retry on conflict
+                                await UpdateEntityWithRetryAsync(entity, cancellationToken);
                             }
                             else
                             {
@@ -214,8 +287,8 @@ public class ProjectController : IEntityController<V1Project>
                                     }
                                 }
                                 
-                                // Update the CRD spec
-                                await _kubernetesClient.UpdateAsync(entity, cancellationToken);
+                                // Update the CRD spec with retry on conflict
+                                await UpdateEntityWithRetryAsync(entity, cancellationToken);
                             }
                             else
                             {
@@ -237,8 +310,28 @@ public class ProjectController : IEntityController<V1Project>
                 }
             }
 
-            entity.Status.CreatedNamespaces.Clear();
+            // Prepare for namespace processing
+            entity.Status.CreatedNamespaces.Clear(); // will only include namespaces created this reconcile
             var namespaceCount = 0;
+            var manuallyRemovedSet = new HashSet<string>(entity.Status.ManuallyRemovedNamespaces ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+
+            // Pre-fetch current project namespaces to help detect manual removals
+            var currentProjectNamespaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(entity.Status.ProjectId))
+            {
+                try
+                {
+                    var projectNamespacesForPresence = await _rancherApi.GetProjectNamespacesAsync(entity.Status.ProjectId, cancellationToken);
+                    foreach (var ns in projectNamespacesForPresence)
+                    {
+                        currentProjectNamespaces.Add(ns.Name);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Failed to pre-fetch namespaces for presence detection; proceeding without manual removal detection");
+                }
+            }
             foreach (var originalNamespaceName in entity.Spec.Namespaces)
             {
                 try
@@ -246,13 +339,20 @@ public class ProjectController : IEntityController<V1Project>
                     var namespaceName = originalNamespaceName.ToLowerInvariant();
                     _logger.LogDebug("Processing namespace: {Namespace} for project {ProjectId}", namespaceName, entity.Status.ProjectId);
                     
+                    // Skip if marked manually removed
+                    if (manuallyRemovedSet.Contains(namespaceName))
+                    {
+                        _logger.LogInformation("Namespace {Namespace} is marked as manually removed; skipping creation/assignment.", namespaceName);
+                        continue;
+                    }
+
                     // Check if namespace exists in Rancher
                     var existingNs = await _rancherApi.GetNamespaceAsync(entity.Status.ClusterId!, namespaceName, cancellationToken);
                     
                     if (existingNs == null)
                     {
                         // Namespace doesn't exist - create it if allowed
-                        if (!allowCreate)
+                        if (!allowNamespaceCreate)
                         {
                             _logger.LogInformation("Namespace {Namespace} does not exist and Create is not permitted.", namespaceName);
                             continue;
@@ -261,7 +361,7 @@ public class ProjectController : IEntityController<V1Project>
                         await _rancherApi.CreateNamespaceAsync(entity.Status.ProjectId!, namespaceName, cancellationToken);
                         MetricsService.NamespacesCreated.Inc();
                         await _eventService.CreateEventAsync(entity, "NamespaceCreated", $"Created namespace: {namespaceName}", "Normal", cancellationToken);
-                        entity.Status.CreatedNamespaces.Add(namespaceName);
+                        entity.Status.CreatedNamespaces.Add(namespaceName); // only record true creations
                         namespaceCount++;
                     }
                     else
@@ -270,7 +370,6 @@ public class ProjectController : IEntityController<V1Project>
                         if (existingNs.ProjectId == entity.Status.ProjectId)
                         {
                             _logger.LogDebug("Namespace {Namespace} already assigned to this project", namespaceName);
-                            entity.Status.CreatedNamespaces.Add(namespaceName);
                             namespaceCount++;
                         }
                         else if (!string.IsNullOrEmpty(existingNs.ProjectId))
@@ -284,42 +383,39 @@ public class ProjectController : IEntityController<V1Project>
                                 await _eventService.CreateEventAsync(entity, "NamespaceConflict", errorMsg, "Warning", cancellationToken);
                                 entity.Status.Phase = "Error";
                                 entity.Status.ErrorMessage = errorMsg;
-                                await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
+                                await UpdateStatusWithRetryAsync(entity, cancellationToken);
                                 MetricsService.RecordError("namespace_conflict");
                                 return;
                             }
                             else
                             {
-                                // Not claimed by another CRD - we can move it if create is allowed
-                                if (!allowCreate)
+                                // Not claimed by another CRD - we can move it if update is allowed
+                                if (!allowNamespaceUpdate)
                                 {
-                                    _logger.LogInformation("Namespace {Namespace} exists in another project but Create is not permitted.", namespaceName);
+                                    _logger.LogInformation("Namespace {Namespace} exists in another project but Update is not permitted.", namespaceName);
                                     continue;
                                 }
-                                
-                                _logger.LogInformation("Moving namespace {Namespace} from project {OldProject} to {NewProject}", 
+                                _logger.LogInformation("Moving namespace {Namespace} from project {OldProject} to {NewProject}",
                                     namespaceName, existingNs.ProjectId, entity.Status.ProjectId);
                                 await _rancherApi.UpdateNamespaceProjectAsync(entity.Status.ClusterId!, namespaceName, entity.Status.ProjectId!, cancellationToken);
-                                await _eventService.CreateEventAsync(entity, "NamespaceMoved", 
+                                await _eventService.CreateEventAsync(entity, "NamespaceMoved",
                                     $"Moved namespace {namespaceName} to this project", "Normal", cancellationToken);
-                                entity.Status.CreatedNamespaces.Add(namespaceName);
                                 namespaceCount++;
                             }
                         }
                         else
                         {
-                            // Namespace exists but not assigned to any project - assign it if create is allowed
-                            if (!allowCreate)
+                            // Namespace exists but not assigned to any project - assign it if update is allowed
+                            if (!allowNamespaceUpdate)
                             {
-                                _logger.LogInformation("Namespace {Namespace} exists but Create is not permitted.", namespaceName);
+                                _logger.LogInformation("Namespace {Namespace} exists but Update is not permitted.", namespaceName);
                                 continue;
                             }
-                            
+
                             _logger.LogInformation("Assigning existing namespace {Namespace} to project {ProjectId}", namespaceName, entity.Status.ProjectId);
                             await _rancherApi.UpdateNamespaceProjectAsync(entity.Status.ClusterId!, namespaceName, entity.Status.ProjectId!, cancellationToken);
-                            await _eventService.CreateEventAsync(entity, "NamespaceAssigned", 
+                            await _eventService.CreateEventAsync(entity, "NamespaceAssigned",
                                 $"Assigned namespace {namespaceName} to this project", "Normal", cancellationToken);
-                            entity.Status.CreatedNamespaces.Add(namespaceName);
                             namespaceCount++;
                         }
                     }
@@ -330,15 +426,39 @@ public class ProjectController : IEntityController<V1Project>
                     await _eventService.CreateEventAsync(entity, "NamespaceProcessingFailed", $"Failed to process namespace: {originalNamespaceName} - {ex.Message}", "Warning", cancellationToken);
                     entity.Status.Phase = "Error";
                     entity.Status.ErrorMessage = ex.Message;
-                    await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
+                    await UpdateStatusWithRetryAsync(entity, cancellationToken);
                     MetricsService.RecordError("namespace_processing_failed");
                     MetricsService.RecordError("namespace_creation_failed");
                 }
             }
             MetricsService.ActiveNamespaces.Set(namespaceCount);
 
-            // Handle namespaces removed from spec - disassociate them from the Rancher project (do not delete)
-            if (!string.IsNullOrEmpty(entity.Status.ClusterId) && !string.IsNullOrEmpty(entity.Status.ProjectId))
+            // Detect namespaces in spec that disappeared from project and mark as manually removed (only if they were previously created by operator)
+            try
+            {
+                if (!string.IsNullOrEmpty(entity.Status.ProjectId) && currentProjectNamespaces.Count > 0)
+                {
+                    var desired = entity.Spec.Namespaces.Select(n => n.ToLowerInvariant()).ToHashSet();
+                    foreach (var desiredNs in desired)
+                    {
+                        if (!currentProjectNamespaces.Contains(desiredNs) && !manuallyRemovedSet.Contains(desiredNs))
+                        {
+                            // Only auto-mark if we had previously created it (present in old CreatedNamespaces list retained before clear?)
+                            // Since we cleared CreatedNamespaces for fresh reconcile, rely on ManuallyRemovedNamespaces persistence only.
+                            // For now, do not auto-add; feature can be expanded later.
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Manual removal detection pass failed (non-fatal)");
+            }
+
+            // Handle namespaces removed from spec:
+            // - If Delete policy AND CleanupNamespaces=true: delete namespace
+            // - Else if Update policy: disassociate (preserve namespace)
+            if ((allowNamespaceUpdate || (allowNamespaceDelete && _cleanupNamespaces)) && !string.IsNullOrEmpty(entity.Status.ClusterId) && !string.IsNullOrEmpty(entity.Status.ProjectId))
             {
                 try
                 {
@@ -353,7 +473,7 @@ public class ProjectController : IEntityController<V1Project>
                     {
                         try
                         {
-                            if (_cleanupNamespaces)
+                            if (allowNamespaceDelete && _cleanupNamespaces)
                             {
                                 _logger.LogInformation("Deleting namespace {Namespace} (CleanupNamespaces=true)", removedNs);
                                 var deleted = await _rancherApi.DeleteNamespaceAsync(entity.Status.ClusterId, removedNs, cancellationToken);
@@ -385,6 +505,10 @@ public class ProjectController : IEntityController<V1Project>
                 {
                     _logger.LogWarning(ex, "Failed to evaluate namespaces for removal from project {ProjectId}", entity.Status.ProjectId);
                 }
+            }
+            else if (!allowNamespaceDelete)
+            {
+                _logger.LogDebug("managementPolicies does not include Delete; skipping namespace removals for project {ProjectId}", entity.Status.ProjectId);
             }
 
             entity.Status.ConfiguredMembers.Clear();
@@ -430,7 +554,13 @@ public class ProjectController : IEntityController<V1Project>
                 entity.Status.Phase = "Active";
             }
 
-            entity.Status.LastReconcileTime = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
+            entity.Status.LastReconcileTime = now;
+            if (entity.Status.CreatedTimestamp == null && entity.Status.ProjectId != null)
+            {
+                entity.Status.CreatedTimestamp = now;
+            }
+            entity.Status.LastUpdatedTimestamp = now;
             entity.Status.ErrorMessage = null;
             await _kubernetesClient.UpdateStatusAsync(entity, cancellationToken);
             await _eventService.CreateEventAsync(entity, "ReconcileCompleted", "Successfully reconciled Project", "Normal", cancellationToken);
@@ -469,6 +599,13 @@ public class ProjectController : IEntityController<V1Project>
                 : entity.Spec.ManagementPolicies.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase));
             var allowDelete = Allows("Delete");
 
+            // Namespace-specific policies (default Create+Update). We only need Update/Delete semantics here.
+            bool NsAllows(string name) => (entity.Spec.NamespaceManagementPolicies == null || entity.Spec.NamespaceManagementPolicies.Count == 0)
+                ? (name == "Create" || name == "Update")
+                : entity.Spec.NamespaceManagementPolicies.Any(p => string.Equals(p, name, StringComparison.OrdinalIgnoreCase));
+            var allowNamespaceUpdate = NsAllows("Update");
+            var allowNamespaceDelete = NsAllows("Delete");
+
             if (!allowDelete)
             {
                 _logger.LogInformation("managementPolicies does not include Delete; skipping deletion for {Name}", entity.Metadata.Name);
@@ -480,44 +617,43 @@ public class ProjectController : IEntityController<V1Project>
                 return;
             }
             
-            // Remove namespaces from project (but don't delete them)
+            // Handle namespaces on project deletion
             if (!string.IsNullOrEmpty(entity.Status.ClusterId))
             {
                 foreach (var namespaceName in entity.Status.CreatedNamespaces)
                 {
                     try
                     {
-                        if (_cleanupNamespaces)
+                        if (allowNamespaceDelete && _cleanupNamespaces)
                         {
-                            _logger.LogInformation("Deleting namespace {Namespace} (CleanupNamespaces=true)", namespaceName);
+                            _logger.LogInformation("Deleting namespace {Namespace} as part of project deletion (CleanupNamespaces=true)", namespaceName);
                             var deleted = await _rancherApi.DeleteNamespaceAsync(entity.Status.ClusterId, namespaceName, cancellationToken);
                             if (deleted)
                             {
                                 MetricsService.NamespacesDeleted.Inc();
-                                await _eventService.CreateEventAsync(entity, "NamespaceDeleted", 
-                                    $"Deleted namespace {namespaceName}", "Normal", cancellationToken);
+                                await _eventService.CreateEventAsync(entity, "NamespaceDeleted", $"Deleted namespace {namespaceName}", "Normal", cancellationToken);
                             }
+                        }
+                        else if (allowNamespaceUpdate)
+                        {
+                            _logger.LogInformation("Disassociating namespace {Namespace} from project (preserving namespace)", namespaceName);
+                            await _rancherApi.RemoveNamespaceFromProjectAsync(entity.Status.ClusterId, namespaceName, cancellationToken);
+                            await _eventService.CreateEventAsync(entity, "NamespaceRemovedFromProject", $"Removed namespace {namespaceName} from project (namespace preserved)", "Normal", cancellationToken);
                         }
                         else
                         {
-                            _logger.LogInformation("Removing namespace {Namespace} from project (CleanupNamespaces=false)", namespaceName);
-                            await _rancherApi.RemoveNamespaceFromProjectAsync(entity.Status.ClusterId, namespaceName, cancellationToken);
-                            await _eventService.CreateEventAsync(entity, "NamespaceRemovedFromProject", 
-                                $"Removed namespace {namespaceName} from project (namespace preserved)", "Normal", cancellationToken);
+                            _logger.LogDebug("Skipping namespace {Namespace} - no Update policy and Delete either not set or CleanupNamespaces=false", namespaceName);
                         }
                     }
                     catch (Exception ex)
                     {
-                        var action = _cleanupNamespaces ? "delete" : "remove";
+                        var action = (allowNamespaceDelete && _cleanupNamespaces) ? "delete" : "remove";
                         _logger.LogError(ex, "Failed to {Action} namespace {Namespace}", action, namespaceName);
-                        await _eventService.CreateEventAsync(entity, "NamespaceRemovalFailed", 
-                            $"Failed to {action} namespace {namespaceName}: {ex.Message}", "Warning", cancellationToken);
+                        await _eventService.CreateEventAsync(entity, "NamespaceRemovalFailed", $"Failed to {action} namespace {namespaceName}: {ex.Message}", "Warning", cancellationToken);
                         MetricsService.RecordError("namespace_removal_failed");
                     }
                 }
             }
-            
-            await _rancherApi.DeleteProjectAsync(entity.Status.ProjectId, cancellationToken);
             MetricsService.ProjectsDeleted.Inc();
             MetricsService.ActiveProjects.Dec();
             await _eventService.CreateEventAsync(entity, "ProjectDeleted", "Successfully deleted Project", "Normal", cancellationToken);
