@@ -402,7 +402,7 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Removing namespace {NamespaceName} from its project", namespaceName);
+            _logger.LogInformation("Removing namespace {NamespaceName} from its project using Rancher move action", namespaceName);
             
             var existing = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
             if (existing == null)
@@ -411,71 +411,37 @@ public class RancherApiService : IRancherApiService
                 return false;
             }
 
-            // Prepare updated metadata: remove Rancher project annotation and clear projectId
-            var labels = existing.Labels ?? new Dictionary<string, string>();
-            var annotations = existing.Annotations ?? new Dictionary<string, string>();
-            if (annotations.ContainsKey(RancherProjectAnnotationKey))
+            // Use Rancher's namespace move action endpoint to disassociate from project
+            // Setting projectId to empty string removes the project association
+            var moveRequest = new
             {
-                annotations.Remove(RancherProjectAnnotationKey);
-            }
-
-            // First attempt: Update with null projectId to disassociate
-            var updateRequest = new RancherNamespaceRequest
-            {
-                Name = namespaceName,
-                ProjectId = null,
-                Labels = labels,
-                Annotations = annotations
+                projectId = ""
             };
 
-            var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
+            var json = JsonSerializer.Serialize(moveRequest, _jsonOptions);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", content, cancellationToken);
+            var response = await _httpClient.PostAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}?action=move", content, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Namespace project removal failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
+                _logger.LogError("Namespace move action failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
                 response.EnsureSuccessStatusCode();
             }
 
-            // Verify disassociation; Rancher may require empty string instead of null
+            // Verify disassociation
             var verify = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
             var stillAssociated = verify != null && (!string.IsNullOrEmpty(verify.ProjectId) || (verify.Annotations != null && verify.Annotations.ContainsKey(RancherProjectAnnotationKey)));
             if (stillAssociated)
             {
-                _logger.LogWarning("Namespace {NamespaceName} still shows project/link after null disassociation; attempting empty projectId fallback", namespaceName);
-                // Fallback attempt with empty projectId
-                var fallbackAnnotations = verify?.Annotations ?? new Dictionary<string, string>();
-                if (fallbackAnnotations.ContainsKey(RancherProjectAnnotationKey))
-                {
-                    fallbackAnnotations.Remove(RancherProjectAnnotationKey);
-                }
-                var fallbackRequest = new RancherNamespaceRequest
-                {
-                    Name = namespaceName,
-                    ProjectId = string.Empty,
-                    Labels = verify?.Labels ?? labels,
-                    Annotations = fallbackAnnotations
-                };
-                var fallbackJson = JsonSerializer.Serialize(fallbackRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
-                var fallbackContent = new StringContent(fallbackJson, Encoding.UTF8, "application/json");
-                var fallbackResponse = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", fallbackContent, cancellationToken);
-                if (!fallbackResponse.IsSuccessStatusCode)
-                {
-                    var fbBody = await fallbackResponse.Content.ReadAsStringAsync(cancellationToken);
-                    _logger.LogError("Namespace project removal fallback failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)fallbackResponse.StatusCode, fbBody);
-                    fallbackResponse.EnsureSuccessStatusCode();
-                }
-                verify = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
-                stillAssociated = verify != null && (!string.IsNullOrEmpty(verify.ProjectId) || (verify.Annotations != null && verify.Annotations.ContainsKey(RancherProjectAnnotationKey)));
-                if (stillAssociated)
-                {
-                    _logger.LogWarning("Namespace {NamespaceName} remains associated after both attempts; Rancher may be caching or require a specialized action endpoint.", namespaceName);
-                }
+                _logger.LogWarning("Namespace {NamespaceName} still shows project association after move action: ProjectId={ProjectId}, Annotation={HasAnnotation}", 
+                    namespaceName, verify?.ProjectId, verify?.Annotations?.ContainsKey(RancherProjectAnnotationKey));
+            }
+            else
+            {
+                _logger.LogInformation("Successfully removed namespace {NamespaceName} from project", namespaceName);
             }
 
-            _logger.LogInformation("Removed namespace {NamespaceName} from project", namespaceName);
             return true;
         }
         catch (Exception ex)
