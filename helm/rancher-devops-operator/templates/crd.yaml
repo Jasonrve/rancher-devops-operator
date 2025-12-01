@@ -62,19 +62,14 @@ spec:
                 managementPolicies:
                   type: array
                   description: >-
-                    Crossplane-like management policies controlling which actions the
-                    operator may take. Supported values: "Observe", "Create", "Delete".
-                    When omitted, defaults to ["Observe","Create","Delete"].
-                  default:
-                    - Observe
-                    - Create
-                    - Delete
+                    Management policies controlling allowed actions: "Create", "Delete", "Observe".
+                    If omitted or empty, defaults to ["Create"] (Delete/Observe are opt-in).
                   items:
                     type: string
                     enum:
-                      - Observe
                       - Create
                       - Delete
+                      - Observe
                 resourceQuota:
                   type: object
                   description: Resource quotas for the project
@@ -87,6 +82,20 @@ spec:
                       type: string
                     requestsMemory:
                       type: string
+                namespaceManagementPolicies:
+                  type: array
+                  description: >-
+                    Namespace-specific management policies controlling namespace actions: "Create", "Update", "Delete".
+                    If omitted or empty, defaults to ["Create","Update"] (Delete is opt-in).
+                    - Create: Allows creating namespaces
+                    - Update: Allows (re)assigning namespaces into or out of the Rancher project (disassociation/move)
+                    - Delete: Allows deleting namespaces ONLY when controller CleanupNamespaces=true (otherwise acts like Update)
+                  items:
+                    type: string
+                    enum:
+                      - Create
+                      - Update
+                      - Delete
             status:
               type: object
               properties:
@@ -101,13 +110,26 @@ spec:
                   description: Current phase of the resource
                 createdNamespaces:
                   type: array
-                  description: List of created namespaces
+                  description: List of namespaces created by the operator (not merely assigned or moved)
+                  items:
+                    type: string
+                manuallyRemovedNamespaces:
+                  type: array
+                  description: Namespaces manually removed in the cluster/UI that should NOT be recreated even if present in spec
                   items:
                     type: string
                 lastReconcileTime:
                   type: string
                   format: date-time
                   description: Last reconciliation time
+                createdTimestamp:
+                  type: string
+                  format: date-time
+                  description: Timestamp when the controller first successfully created or took over the project
+                lastUpdatedTimestamp:
+                  type: string
+                  format: date-time
+                  description: Timestamp of last successful status update (end of reconcile)
                 errorMessage:
                   type: string
                   description: Error message if any

@@ -401,6 +401,42 @@ Notes:
 - Use `namespaceManagementPolicies` to control namespace create vs delete independently of project/member policies.
 - `namespaceManagementPolicies` defaults to `Create` when omitted. Add `Delete` to enable disassociation and (optional) deletion.
 
+## Status Fields
+
+- `status.createdNamespaces`: Namespaces created by the operator during reconcile (excludes moved/assigned namespaces).
+- `status.manuallyRemovedNamespaces`: Namespaces that should not be recreated even if present in `spec.namespaces`.
+  - Populated automatically when:
+    - A namespace is deleted (watch Deleted event) in the target cluster
+    - Poll mode detects a namespace missing compared to the previous snapshot
+    - Reconcile finds a desired namespace not present in the Rancher project
+  - Can also be managed manually via kubectl (examples below)
+- `status.createdTimestamp`: First successful creation/takeover timestamp for the project.
+- `status.lastUpdatedTimestamp`: Timestamp of the last successful reconcile status update.
+
+### Manual Removals: Prevent Recreation
+
+If a namespace is removed directly in Rancher or Kubernetes, the operator marks it as manually removed to avoid recreating it. You can also manage the list yourself.
+
+Add namespaces to the manually removed list:
+
+```sh
+kubectl patch projects.rancher.devops.io my-project \
+  --type=merge --subresource=status \
+  -p '{"status":{"manuallyRemovedNamespaces":["team-a","team-b"]}}'
+```
+
+Remove a namespace from the list (resume management on next reconcile):
+
+```sh
+kubectl patch projects.rancher.devops.io my-project \
+  --type=merge --subresource=status \
+  -p '{"status":{"manuallyRemovedNamespaces":["team-b"]}}'
+```
+
+Notes:
+- When a name exists in `status.manuallyRemovedNamespaces`, the operator skips creation/assignment for that namespace even if present in `spec.namespaces`.
+- Remove the entry to resume management; on the next reconcile the operator will create/assign according to policies.
+
 ### Rancher API Token
 
 The operator requires a Rancher API token with the following permissions:

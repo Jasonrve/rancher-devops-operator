@@ -39,6 +39,7 @@ public class RancherApiService : IRancherApiService
     private const string ManagedByKey = "app.kubernetes.io/managed-by";
     private const string ManagedByValue = "rancher-devops-operator";
     private const string CreatedByKey = "app.kubernetes.io/created-by";
+    private const string RancherProjectAnnotationKey = "field.cattle.io/projectId";
 
     public RancherApiService(
         IHttpClientFactory httpClientFactory, 
@@ -370,6 +371,8 @@ public class RancherApiService : IRancherApiService
             updateRequest.Labels[ManagedByKey] = ManagedByValue;
             // Ensure managed-by annotation is also set for consistency
             updateRequest.Annotations[ManagedByKey] = ManagedByValue;
+            // Ensure Rancher project annotation reflects the new project
+            updateRequest.Annotations[RancherProjectAnnotationKey] = newProjectId;
 
             var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -408,13 +411,21 @@ public class RancherApiService : IRancherApiService
                 return false;
             }
 
-            // Update with empty/null projectId to disassociate
+            // Prepare updated metadata: remove Rancher project annotation and clear projectId
+            var labels = existing.Labels ?? new Dictionary<string, string>();
+            var annotations = existing.Annotations ?? new Dictionary<string, string>();
+            if (annotations.ContainsKey(RancherProjectAnnotationKey))
+            {
+                annotations.Remove(RancherProjectAnnotationKey);
+            }
+
+            // Update with null projectId to disassociate
             var updateRequest = new RancherNamespaceRequest
             {
                 Name = namespaceName,
-                ProjectId = string.Empty,
-                Labels = existing.Labels,
-                Annotations = existing.Annotations
+                ProjectId = null,
+                Labels = labels,
+                Annotations = annotations
             };
 
             var json = JsonSerializer.Serialize(updateRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
