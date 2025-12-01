@@ -49,6 +49,6 @@ rancher:
   existingSecretPasswordKey: password
 env:
   ClusterCheckInterval: 5
-  ObserveMethod: watch # valid: watch | poll | none
-  PollingInterval: 2   # minutes, used when observeMethod=poll
+  ObserveMethod: watch
+  PollingInterval: 2
   CleanupNamespaces: false
