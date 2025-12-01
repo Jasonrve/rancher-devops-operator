@@ -419,7 +419,7 @@ public class RancherApiService : IRancherApiService
                 annotations.Remove(RancherProjectAnnotationKey);
             }
 
-            // Update with null projectId to disassociate
+            // First attempt: Update with null projectId to disassociate
             var updateRequest = new RancherNamespaceRequest
             {
                 Name = namespaceName,
@@ -437,6 +437,42 @@ public class RancherApiService : IRancherApiService
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("Namespace project removal failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)response.StatusCode, errorBody);
                 response.EnsureSuccessStatusCode();
+            }
+
+            // Verify disassociation; Rancher may require empty string instead of null
+            var verify = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
+            var stillAssociated = verify != null && (!string.IsNullOrEmpty(verify.ProjectId) || (verify.Annotations != null && verify.Annotations.ContainsKey(RancherProjectAnnotationKey)));
+            if (stillAssociated)
+            {
+                _logger.LogWarning("Namespace {NamespaceName} still shows project/link after null disassociation; attempting empty projectId fallback", namespaceName);
+                // Fallback attempt with empty projectId
+                var fallbackAnnotations = verify?.Annotations ?? new Dictionary<string, string>();
+                if (fallbackAnnotations.ContainsKey(RancherProjectAnnotationKey))
+                {
+                    fallbackAnnotations.Remove(RancherProjectAnnotationKey);
+                }
+                var fallbackRequest = new RancherNamespaceRequest
+                {
+                    Name = namespaceName,
+                    ProjectId = string.Empty,
+                    Labels = verify?.Labels ?? labels,
+                    Annotations = fallbackAnnotations
+                };
+                var fallbackJson = JsonSerializer.Serialize(fallbackRequest, RancherJsonSerializerContext.Default.RancherNamespaceRequest);
+                var fallbackContent = new StringContent(fallbackJson, Encoding.UTF8, "application/json");
+                var fallbackResponse = await _httpClient.PutAsync($"/v3/clusters/{clusterId}/namespaces/{namespaceName}", fallbackContent, cancellationToken);
+                if (!fallbackResponse.IsSuccessStatusCode)
+                {
+                    var fbBody = await fallbackResponse.Content.ReadAsStringAsync(cancellationToken);
+                    _logger.LogError("Namespace project removal fallback failed for {NamespaceName} status {Status}: {Body}", namespaceName, (int)fallbackResponse.StatusCode, fbBody);
+                    fallbackResponse.EnsureSuccessStatusCode();
+                }
+                verify = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
+                stillAssociated = verify != null && (!string.IsNullOrEmpty(verify.ProjectId) || (verify.Annotations != null && verify.Annotations.ContainsKey(RancherProjectAnnotationKey)));
+                if (stillAssociated)
+                {
+                    _logger.LogWarning("Namespace {NamespaceName} remains associated after both attempts; Rancher may be caching or require a specialized action endpoint.", namespaceName);
+                }
             }
 
             _logger.LogInformation("Removed namespace {NamespaceName} from project", namespaceName);
