@@ -633,21 +633,31 @@ public class RancherApiService : IRancherApiService
         await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Resolving principal name {PrincipalName}", principalName);
-            var encoded = Uri.EscapeDataString(principalName);
-            var response = await _httpClient.GetAsync($"/v3/principals?name={encoded}", cancellationToken);
+            _logger.LogInformation("Searching principal name {PrincipalName} via Rancher search API", principalName);
+
+            var payload = new
+            {
+                name = principalName,
+                principalType = (string?)null
+            };
+
+            var json = JsonSerializer.Serialize(payload, _jsonOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync("/v3/principals?action=search", content, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning("Failed to lookup principal {PrincipalName} status {Status}: {Body}", principalName, (int)response.StatusCode, body);
+                _logger.LogWarning("Principal search failed for {PrincipalName} status {Status}: {Body}", principalName, (int)response.StatusCode, body);
                 return null;
             }
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            var list = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherPrincipalList);
+
+            var respContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            var list = JsonSerializer.Deserialize(respContent, RancherJsonSerializerContext.Default.RancherPrincipalList);
             var match = list?.Data.FirstOrDefault(p => p.Name.Equals(principalName, StringComparison.OrdinalIgnoreCase));
             if (match == null)
             {
-                _logger.LogWarning("Principal name {PrincipalName} not found", principalName);
+                _logger.LogWarning("Principal name {PrincipalName} not found in search results", principalName);
                 return null;
             }
             _logger.LogInformation("Resolved principal name {PrincipalName} to ID {PrincipalId}", principalName, match.Id);
@@ -655,7 +665,7 @@ public class RancherApiService : IRancherApiService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error resolving principal name {PrincipalName}", principalName);
+            _logger.LogError(ex, "Error searching principal name {PrincipalName}", principalName);
             return null;
         }
     }
