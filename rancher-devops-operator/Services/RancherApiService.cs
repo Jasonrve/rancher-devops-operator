@@ -24,7 +24,7 @@ public interface IRancherApiService
     Task<RancherProjectRoleBinding?> CreateProjectMemberAsync(string projectId, string principalId, string role, CancellationToken cancellationToken);
     Task<List<RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken);
-    Task<string?> GetPrincipalIdByNameAsync(string principalName, CancellationToken cancellationToken);
+    Task<RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken);
 }
 
 public class RancherApiService : IRancherApiService
@@ -573,14 +573,24 @@ public class RancherApiService : IRancherApiService
                 RoleTemplateId = role
             };
 
-            // Determine if it's a user or group principal
-            if (principalId.Contains("user", StringComparison.OrdinalIgnoreCase))
+            // Determine if it's a user or group principal based on ID format
+            // User IDs: github_user://, azuread_user://, local://, etc.
+            // Group IDs: github_org://, github_team://, azuread_group://, etc.
+            if (principalId.Contains("_user://", StringComparison.OrdinalIgnoreCase) || 
+                principalId.StartsWith("local://", StringComparison.OrdinalIgnoreCase))
             {
                 bindingRequest.UserPrincipalId = principalId;
             }
-            else
+            else if (principalId.Contains("_org://", StringComparison.OrdinalIgnoreCase) || 
+                     principalId.Contains("_team://", StringComparison.OrdinalIgnoreCase) ||
+                     principalId.Contains("_group://", StringComparison.OrdinalIgnoreCase))
             {
                 bindingRequest.GroupPrincipalId = principalId;
+            }
+            else
+            {
+                _logger.LogWarning("Unable to determine principal type for {PrincipalId}, defaulting to user", principalId);
+                bindingRequest.UserPrincipalId = principalId;
             }
 
             var json = JsonSerializer.Serialize(bindingRequest, RancherJsonSerializerContext.Default.RancherProjectRoleBindingRequest);
@@ -641,7 +651,7 @@ public class RancherApiService : IRancherApiService
         }
     }
 
-    public async Task<string?> GetPrincipalIdByNameAsync(string principalName, CancellationToken cancellationToken)
+    public async Task<RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
         try
@@ -673,8 +683,8 @@ public class RancherApiService : IRancherApiService
                 _logger.LogWarning("Principal name {PrincipalName} not found in search results", principalName);
                 return null;
             }
-            _logger.LogInformation("Resolved principal name {PrincipalName} to ID {PrincipalId}", principalName, match.Id);
-            return match.Id;
+            _logger.LogInformation("Resolved principal name {PrincipalName} to ID {PrincipalId} (Type: {PrincipalType})", principalName, match.Id, match.PrincipalType);
+            return match;
         }
         catch (Exception ex)
         {

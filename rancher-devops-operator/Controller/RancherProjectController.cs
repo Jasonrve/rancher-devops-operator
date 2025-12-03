@@ -539,11 +539,12 @@ public class ProjectController : IEntityController<V1Project>
                     var effectivePrincipalId = member.PrincipalId;
                     if (string.IsNullOrWhiteSpace(effectivePrincipalId) && !string.IsNullOrWhiteSpace(member.PrincipalName))
                     {
-                        effectivePrincipalId = await _rancherApi.GetPrincipalIdByNameAsync(member.PrincipalName, cancellationToken);
-                        if (string.IsNullOrWhiteSpace(effectivePrincipalId))
+                        var principal = await _rancherApi.GetPrincipalByNameAsync(member.PrincipalName, cancellationToken);
+                        if (principal == null)
                         {
                             throw new InvalidOperationException($"Principal name '{member.PrincipalName}' could not be resolved.");
                         }
+                        effectivePrincipalId = principal.Id;
                     }
                     var existingMembers = await _rancherApi.GetProjectMembersAsync(entity.Status.ProjectId!, cancellationToken);
                     var existingMember = existingMembers.FirstOrDefault(m => (m.UserPrincipalId == effectivePrincipalId || m.GroupPrincipalId == effectivePrincipalId) && m.RoleTemplateId == member.Role);
