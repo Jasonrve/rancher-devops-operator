@@ -201,3 +201,12 @@ public class RancherNamespaceMoveRequest
     [JsonPropertyName("projectId")]
     public string ProjectId { get; set; } = string.Empty;
 }
+
+public class RancherPrincipalSearchRequest
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("principalType")]
+    public string? PrincipalType { get; set; }
+}
