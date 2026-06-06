@@ -14,6 +14,7 @@
     <!-- Keep NativeAOT enabled for all RIDs (arm64 will be built natively in CI) -->
 
     <ItemGroup>
+      <FrameworkReference Include="Microsoft.AspNetCore.App" />
       <PackageReference Include="KubeOps.Abstractions" Version="9.11.9" />
       <PackageReference Include="KubeOps.Generator" Version="9.11.9">
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

@@ -4,6 +4,8 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "rancher-devops-operator", "rancher-devops-operator\rancher-devops-operator.csproj", "{448B231A-F6F2-B0A5-9429-8298B77B4BD0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "rancher-devops-operator.Tests", "tests\rancher-devops-operator.Tests\rancher-devops-operator.Tests.csproj", "{E50F41AE-7D79-4E9B-A8A1-E7B4A9D1C2C7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,6 +16,10 @@ Global
 		{448B231A-F6F2-B0A5-9429-8298B77B4BD0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{448B231A-F6F2-B0A5-9429-8298B77B4BD0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{448B231A-F6F2-B0A5-9429-8298B77B4BD0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E50F41AE-7D79-4E9B-A8A1-E7B4A9D1C2C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E50F41AE-7D79-4E9B-A8A1-E7B4A9D1C2C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E50F41AE-7D79-4E9B-A8A1-E7B4A9D1C2C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E50F41AE-7D79-4E9B-A8A1-E7B4A9D1C2C7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
