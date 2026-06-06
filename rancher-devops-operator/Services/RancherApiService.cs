@@ -9,6 +9,8 @@ namespace rancher_devops_operator.Services;
 
 public interface IRancherApiService
 {
+    Task<IReadOnlyList<RancherCluster>> ListClustersAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<RancherProject>> ListProjectsAsync(CancellationToken cancellationToken);
     Task<string?> GetClusterIdByNameAsync(string clusterName, CancellationToken cancellationToken);
     Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken);
     Task<RancherProject?> CreateProjectAsync(string clusterId, string projectName, string? description, CancellationToken cancellationToken);
@@ -57,6 +59,28 @@ public class RancherApiService : IRancherApiService
     {
         var token = await _authService.GetOrCreateTokenAsync(cancellationToken);
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    }
+
+    public async Task<IReadOnlyList<RancherCluster>> ListClustersAsync(CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        var response = await _httpClient.GetAsync("/v3/clusters", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        var clusterList = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherClusterList);
+        return clusterList?.Data ?? [];
+    }
+
+    public async Task<IReadOnlyList<RancherProject>> ListProjectsAsync(CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+        var response = await _httpClient.GetAsync("/v3/projects", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        var projectList = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherProjectList);
+        return projectList?.Data ?? [];
     }
 
     public async Task<string?> GetClusterIdByNameAsync(string clusterName, CancellationToken cancellationToken)
