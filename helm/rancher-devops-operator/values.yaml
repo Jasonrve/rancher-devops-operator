@@ -53,6 +53,14 @@ mcp:
   tokenNamespace: default
   bootstrapAdminTokenHash: ''
   bootstrapAdminTokenSecretName: mcp-bootstrap-admin-token
+  ingress:
+    enabled: true
+    className: traefik
+    annotations: {}
+    host: ''
+    path: /mcp
+    pathType: Prefix
+    tls: []
 
 env:
   ClusterCheckInterval: 5

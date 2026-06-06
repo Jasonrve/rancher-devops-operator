@@ -10,7 +10,9 @@ The chart enables MCP by default:
 - `mcp.port=8080`
 - `mcp.tokenNamespace=default`
 
-The deployment exposes the MCP port as a separate container port and the chart adds a dedicated ClusterIP service at `{{ include "rancher-devops-operator.fullname" . }}-mcp`.
+The deployment exposes the MCP port as a separate container port, the chart adds a dedicated ClusterIP service at `{{ include "rancher-devops-operator.fullname" . }}-mcp`, and the chart enables a Traefik ingress by default for external access in the local Rancher cluster.
+
+The default external host is `{{ include "rancher-devops-operator.fullname" . }}.oly.workside.win`, but you can override it with `mcp.ingress.host`.
 
 ## Authentication and authorization
 
@@ -135,7 +137,7 @@ Authenticated token call:
 ```bash
 curl -s http://operator:8080/mcp \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $MCP_TOKEN" \
+  -H "authorization: Bearer ***" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cluster_list","arguments":{}}}'
 ```
 
@@ -143,4 +145,4 @@ curl -s http://operator:8080/mcp \
 
 The deployment needs a namespaced Role/RoleBinding for the MCP token namespace so the token store can create, list, and delete Secret-backed tokens. Keep the operator service account scoped to the namespace that holds MCP token Secrets.
 
-The chart also exposes a dedicated MCP service port so clusters can route MCP traffic independently from the operator's other endpoints.
+The chart also exposes a dedicated MCP service port and an ingress route so clusters can route MCP traffic independently from the operator's other endpoints.
