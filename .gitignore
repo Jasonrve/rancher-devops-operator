@@ -13,8 +13,3 @@ Thumbs.db
 # Helm
 helm/*/charts/
 helm/*/*.tgz
-
-# VitePress build output
-docs-site/.vitepress/dist/
-node_modules/
-docs-site-homepage.png
