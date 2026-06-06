@@ -47,6 +47,13 @@ rancher:
   existingSecretTokenKey: token
   existingSecretUsernameKey: username
   existingSecretPasswordKey: password
+mcp:
+  enabled: true
+  port: 8080
+  tokenNamespace: default
+  bootstrapAdminTokenHash: ''
+  bootstrapAdminTokenSecretName: mcp-bootstrap-admin-token
+
 env:
   ClusterCheckInterval: 5
   ObserveMethod: watch
