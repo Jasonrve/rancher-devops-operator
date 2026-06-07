@@ -12,11 +12,11 @@ public class McpToolCatalogTests
 
         var tools = catalog.GetTools(McpRole.Viewer).Select(tool => tool.Name).ToArray();
 
-        Assert.Contains("cluster_list", tools);
-        Assert.Contains("project_list", tools);
-        Assert.Contains("kubernetes_get", tools);
-        Assert.DoesNotContain("kubernetes_delete", tools);
-        Assert.DoesNotContain("mcp_token_create", tools);
+        Assert.Contains("list_rancher_clusters", tools);
+        Assert.Contains("list_projects", tools);
+        Assert.Contains("whoami", tools);
+        Assert.DoesNotContain("delete_rancher_cluster", tools);
+        Assert.DoesNotContain("create_mcp_token", tools);
     }
 
     [Fact]
@@ -26,8 +26,9 @@ public class McpToolCatalogTests
 
         var tools = catalog.GetTools(McpRole.Admin).Select(tool => tool.Name).ToArray();
 
-        Assert.Contains("mcp_token_create", tools);
-        Assert.Contains("mcp_token_delete", tools);
-        Assert.Contains("kubernetes_delete", tools);
+        Assert.Contains("create_mcp_token", tools);
+        Assert.Contains("revoke_mcp_token", tools);
+        Assert.Contains("delete_rancher_cluster", tools);
+        Assert.Contains("install_rancher_app", tools);
     }
 }

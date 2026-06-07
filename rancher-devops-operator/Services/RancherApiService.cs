@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -27,6 +28,7 @@ public interface IRancherApiService
     Task<List<RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken);
     Task<RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken);
+    Task<string> InvokeRawAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken);
 }
 
 public class RancherApiService : IRancherApiService
@@ -715,5 +717,26 @@ public class RancherApiService : IRancherApiService
             _logger.LogError(ex, "Error searching principal name {PrincipalName}", principalName);
             return null;
         }
+    }
+
+    public async Task<string> InvokeRawAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    {
+        await EnsureAuthenticatedAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            var json = JsonSerializer.Serialize(body, _jsonOptions);
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        }
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Rancher API call {method.Method} {path} failed with status {(int)response.StatusCode}: {content}");
+        }
+
+        return content;
     }
 }
