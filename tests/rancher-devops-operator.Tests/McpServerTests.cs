@@ -28,8 +28,8 @@ public class McpServerTests
         });
 
         var tools = response.GetProperty("result").GetProperty("tools");
-        Assert.Contains(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "cluster_list");
-        Assert.DoesNotContain(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "mcp_token_create");
+        Assert.Contains(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "list_rancher_clusters");
+        Assert.DoesNotContain(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "create_mcp_token");
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class McpServerTests
             method = "tools/call",
             @params = new
             {
-                name = "mcp_token_create",
+                name = "create_mcp_token",
                 arguments = new { role = "admin" },
             },
         }, authorization: "Bearer valid-viewer");
@@ -132,6 +132,7 @@ public class McpServerTests
         public Task<List<rancher_devops_operator.Models.RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken) => Task.FromResult(new List<rancher_devops_operator.Models.RancherProjectRoleBinding>());
         public Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken) => Task.FromResult(false);
         public Task<rancher_devops_operator.Models.RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherPrincipal?>(null);
+        public Task<string> InvokeRawAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken) => Task.FromResult("{}");
     }
 
     private sealed class StaticTokenStore : IMcpTokenStore

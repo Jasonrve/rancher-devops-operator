@@ -40,7 +40,7 @@ Each token Secret stores:
 - `role` — `viewer` or `admin`
 - `createdAt` — timestamp used for listing/order
 
-The raw token itself is returned only once when the token is created. It is never written to logs or to the Secret.
+The raw token itself is never echoed by the operator; the secret name is returned and the token is stored in Kubernetes Secrets.
 
 Token Secrets are labeled so the operator can discover them safely:
 
@@ -78,68 +78,115 @@ Keep the raw token somewhere safe; the cluster only stores the hash.
 
 Admin-only tools:
 
-- `mcp_token_list`
-- `mcp_token_create`
-- `mcp_token_delete`
+- `list_mcp_tokens`
+- `create_mcp_token`
+- `rotate_mcp_token`
+- `revoke_mcp_token`
 
-`mcp_token_create` returns the raw token once and stores the hash in a Secret.
-`mcp_token_delete` removes the matching Secret.
+`create_mcp_token` stores the token hash in Kubernetes and returns only the secret name and role metadata.
+`revoke_mcp_token` removes the matching Secret.
 
 ## Tool inventory
 
-Implemented today:
+Implemented tools are grouped by access level:
 
-- `cluster_list` — Rancher cluster inventory
-- `project_list` — Rancher project inventory
-- `mcp_token_list` — admin token inventory
-- `mcp_token_create` — create a new token Secret
-- `mcp_token_delete` — delete a token Secret
+Viewer tools:
 
-Inventory-mapped but not implemented in this build:
+- `whoami`
+- `get_effective_role`
+- `list_allowed_tools`
+- `explain_user_access`
+- `get_rancher_version`
+- `check_rancher_api_health`
+- `get_rancher_server_health`
+- `list_rancher_clusters`
+- `get_rancher_cluster`
+- `get_cluster_summary`
+- `get_cluster_status`
+- `get_cluster_agent_status`
+- `get_cluster_registration_status`
+- `get_downstream_cluster_connectivity`
+- `get_cluster_agent_diagnostics`
+- `get_rancher_recent_warnings`
+- `list_projects`
+- `get_project`
+- `list_project_namespaces`
+- `list_project_members`
+- `list_project_role_template_bindings`
+- `list_cluster_role_template_bindings`
+- `list_rancher_users`
+- `list_rancher_groups`
+- `list_global_roles`
+- `list_role_templates`
+- `list_fleet_gitrepos`
+- `get_fleet_gitrepo`
+- `list_fleet_bundles`
+- `get_fleet_bundle_status`
+- `get_fleet_sync_status`
+- `get_fleet_deployment_errors`
+- `list_rancher_apps`
+- `get_rancher_app`
+- `get_rancher_app_values`
+- `list_rancher_chart_repositories`
+- `search_rancher_catalog_charts`
+- `get_rancher_webhook_status`
 
-- `kubernetes_get`
-- `kubernetes_list`
-- `kubernetes_get_all`
-- `kubernetes_logs`
-- `kubernetes_inspect_pod`
-- `kubernetes_describe`
-- `kubernetes_events`
-- `kubernetes_dep`
-- `kubernetes_rollout_history`
-- `kubernetes_node_analysis`
-- `kubernetes_diff`
-- `kubernetes_watch`
-- `kubernetes_capacity`
-- `kubernetes_workload_health`
-- `kubernetes_resource_summary`
-- `kubernetes_event_summary`
-- `kubernetes_download_file`
-- `kubernetes_create`
-- `kubernetes_patch`
-- `kubernetes_exec`
-- `kubernetes_upload_file`
-- `kubernetes_delete`
+Admin-only tools:
 
-These are registered for compatibility with the upstream `futuretea/rancher-mcp-server` inventory, but the current .NET operator build only implements the Rancher list tools and the token lifecycle tools. The unimplemented Kubernetes tools intentionally return a short explanatory message so clients can see the catalog without assuming false support.
+- `list_mcp_tokens`
+- `create_mcp_token`
+- `rotate_mcp_token`
+- `revoke_mcp_token`
+- `import_cluster`
+- `generate_cluster_registration_command`
+- `rotate_cluster_registration_token`
+- `update_cluster_labels`
+- `update_cluster_annotations`
+- `delete_rancher_cluster`
+- `restart_cluster_agent`
+- `redeploy_cluster_agent`
+- `regenerate_cluster_agent_manifest`
+- `create_project`
+- `update_project`
+- `delete_project`
+- `move_namespace_to_project`
+- `assign_project_member`
+- `remove_project_member`
+- `assign_global_role`
+- `remove_global_role`
+- `assign_cluster_role`
+- `remove_cluster_role`
+- `assign_project_role`
+- `remove_project_role`
+- `create_fleet_gitrepo`
+- `update_fleet_gitrepo`
+- `delete_fleet_gitrepo`
+- `force_fleet_sync`
+- `pause_fleet_gitrepo`
+- `resume_fleet_gitrepo`
+- `install_rancher_app`
+- `upgrade_rancher_app`
+- `rollback_rancher_app`
+- `uninstall_rancher_app`
+- `add_rancher_chart_repository`
+- `refresh_rancher_chart_repository`
+
+Legacy aliases such as `cluster_list`, `project_list`, and the `mcp_token_*` names are still accepted for compatibility, but they are no longer shown by `tools/list`.
 
 ## Example client request
 
 Anonymous viewer list:
 
-```bash
 curl -s http://operator:8080/mcp \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-```
 
 Authenticated token call:
 
-```bash
 curl -s http://operator:8080/mcp \
   -H 'content-type: application/json' \
   -H "authorization: Bearer ***" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cluster_list","arguments":{}}}'
-```
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_rancher_clusters","arguments":{}}}'
 
 ## Narrow RBAC considerations
 
