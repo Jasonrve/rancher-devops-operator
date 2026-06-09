@@ -49,7 +49,6 @@ A Kubernetes operator for managing Rancher projects and namespaces declaratively
 ## Quick Start
 
 See [AUTHENTICATION.md](AUTHENTICATION.md) for detailed authentication setup guide.
-See [BIFROST_KAGENT.md](BIFROST_KAGENT.md) for Bifrost + kagent deployment, MCP hosting, and IDE/client exposure patterns.
 
 ## Installation
 
