@@ -357,6 +357,12 @@ View operator logs:
 kubectl logs -n rancher-devops-system deployment/rancher-devops-operator -f
 ```
 
+## Related Guides
+
+- [AUTHENTICATION.md](AUTHENTICATION.md) - Authentication setup and secret handling
+- [OBSERVABILITY.md](OBSERVABILITY.md) - Metrics, events, and Prometheus integration
+- [BIFROST_KAGENT.md](BIFROST_KAGENT.md) - Bifrost + kagent deployment, MCP hosting, and VS Code / Claude exposure
+
 ## Resources
 
 - [KubeOps Documentation](https://buehler.github.io/dotnet-operator-sdk/)
