@@ -512,7 +512,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
         var clusterId = await ResolveClusterIdAsync(arguments, cancellationToken);
         var name = GetString(arguments, "name", "projectName") ?? throw new ArgumentException("create_project requires name or projectName");
         var project = await _rancherApiService.CreateProjectAsync(clusterId, name, GetString(arguments, "description"), cancellationToken);
-        return WrapJson(project ?? new { created = false, clusterId, name });
+        return WrapJson((object?)project ?? new { created = false, clusterId, name });
     }
 
     private async Task<object> UpdateProjectAsync(JsonElement? arguments, CancellationToken cancellationToken)
@@ -542,7 +542,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
         var namespaceName = GetString(arguments, "namespaceName", "name") ?? throw new ArgumentException("move_namespace_to_project requires namespaceName or name");
         var targetProjectId = GetString(arguments, "projectId", "targetProjectId", "newProjectId") ?? throw new ArgumentException("move_namespace_to_project requires projectId, targetProjectId, or newProjectId");
         var updated = await _rancherApiService.UpdateNamespaceProjectAsync(clusterId, namespaceName, targetProjectId, cancellationToken);
-        return WrapJson(updated ?? new { clusterId, namespaceName, projectId = targetProjectId, updated = false });
+        return WrapJson((object?)updated ?? new { clusterId, namespaceName, projectId = targetProjectId, updated = false });
     }
 
     private async Task<object> AssignProjectMemberAsync(JsonElement? arguments, CancellationToken cancellationToken)
@@ -695,7 +695,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
             name = GetString(arguments, "name", "appName") ?? throw new ArgumentException("install_rancher_app requires name or appName"),
             chart = GetString(arguments, "chart"),
             repo = GetString(arguments, "repo", "repository"),
-            namespace = GetString(arguments, "namespace", "namespaceName"),
+            @namespace = GetString(arguments, "namespace", "namespaceName"),
             values = GetStringDictionary(arguments, "values"),
         };
 
@@ -748,14 +748,6 @@ public sealed class McpToolExecutor : IMcpToolExecutor
     {
         var repoId = GetString(arguments, "id", "repositoryId", "name", "repositoryName") ?? throw new ArgumentException("refresh_rancher_chart_repository requires id, repositoryId, name, or repositoryName");
         return await RawTextAsync(HttpMethod.Post, $"/v1/catalog.cattle.io.clusterrepos/{Uri.EscapeDataString(repoId)}?action=refresh", new { }, cancellationToken);
-    }
-
-    private async Task<object> CreateProjectAsync(JsonElement? arguments, CancellationToken cancellationToken)
-    {
-        var clusterId = await ResolveClusterIdAsync(arguments, cancellationToken);
-        var name = GetString(arguments, "name", "projectName") ?? throw new ArgumentException("create_project requires name or projectName");
-        var project = await _rancherApiService.CreateProjectAsync(clusterId, name, GetString(arguments, "description"), cancellationToken);
-        return WrapJson(project ?? new { created = false, clusterId, name });
     }
 
     private static McpRole ParseRole(JsonElement? arguments, McpRole defaultValue)

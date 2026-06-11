@@ -684,13 +684,13 @@ public class RancherApiService : IRancherApiService
         {
             _logger.LogInformation("Searching principal name {PrincipalName} via Rancher search API", principalName);
 
-            var payload = new
+            var payload = new Dictionary<string, object?>
             {
-                name = principalName,
-                principalType = (string?)null
+                ["name"] = principalName,
+                ["principalType"] = null
             };
 
-            var json = JsonSerializer.Serialize(payload, _jsonOptions);
+            var json = JsonSerializer.Serialize(payload, payload.GetType(), _jsonOptions);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync("/v3/principals?action=search", content, cancellationToken);
