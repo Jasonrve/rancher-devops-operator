@@ -80,7 +80,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
             "get_fleet_sync_status" => GetFleetSyncStatusAsync(arguments, cancellationToken),
             "get_fleet_deployment_errors" => GetFleetDeploymentErrorsAsync(arguments, cancellationToken),
 
-            "list_rancher_apps" => RawTextAsync(HttpMethod.Get, "/v1/apps", null, cancellationToken),
+            "list_rancher_apps" => SafeRawTextAsync(HttpMethod.Get, "/v1/apps", null, cancellationToken, "apps"),
             "get_rancher_app" => GetRancherAppAsync(arguments, cancellationToken),
             "get_rancher_app_values" => GetRancherAppValuesAsync(arguments, cancellationToken),
             "list_rancher_chart_repositories" => RawTextAsync(HttpMethod.Get, "/v1/catalog.cattle.io.clusterrepos", null, cancellationToken),
@@ -192,7 +192,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
     private async Task<object> ListTokensWrappedAsync(CancellationToken cancellationToken)
         => WrapJson(await _tokenStore.ListAsync(cancellationToken));
 
-    private async Task<object> SafeRawTextAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    private async Task<object> SafeRawTextAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken, string operation = "diagnostic")
     {
         try
         {
@@ -200,7 +200,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
         }
         catch (HttpRequestException ex)
         {
-            return WrapText($"Rancher diagnostic request failed for {method.Method} {path}. {ex.Message}");
+            return WrapText($"Rancher {operation} request failed for {method.Method} {path}. {ex.Message}");
         }
     }
 
@@ -402,12 +402,11 @@ public sealed class McpToolExecutor : IMcpToolExecutor
     private async Task<object> SearchRancherCatalogChartsAsync(JsonElement? arguments, CancellationToken cancellationToken)
     {
         var query = GetString(arguments, "name", "query", "chart", "search");
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return await RawTextAsync(HttpMethod.Get, "/v1/catalog.cattle.io.charts", null, cancellationToken);
-        }
+        var path = string.IsNullOrWhiteSpace(query)
+            ? "/v1/catalog.cattle.io.charts"
+            : $"/v1/catalog.cattle.io.charts?name={Uri.EscapeDataString(query)}";
 
-        return await RawTextAsync(HttpMethod.Get, $"/v1/catalog.cattle.io.charts?name={Uri.EscapeDataString(query)}", null, cancellationToken);
+        return await SafeRawTextAsync(HttpMethod.Get, path, null, cancellationToken, "apps");
     }
 
     private async Task<object> CreateTokenAsync(JsonElement? arguments, CancellationToken cancellationToken)
@@ -547,7 +546,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
             annotations = GetStringDictionary(arguments, "annotations"),
         };
 
-        return await RawTextAsync(HttpMethod.Put, $"/v3/projects/{Uri.EscapeDataString(projectId)}", body, cancellationToken);
+        return await SafeRawTextAsync(HttpMethod.Put, $"/v3/projects/{Uri.EscapeDataString(projectId)}", body, cancellationToken, "project update");
     }
 
     private async Task<object> DeleteProjectAsync(JsonElement? arguments, CancellationToken cancellationToken)

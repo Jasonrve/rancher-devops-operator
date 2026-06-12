@@ -79,6 +79,34 @@ public class McpServerTests
         Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("list_rancher_apps", null, McpRole.Viewer, "Rancher apps request failed")]
+    [InlineData("search_rancher_catalog_charts", "{\"query\":\"nginx\"}", McpRole.Viewer, "Rancher apps request failed")]
+    [InlineData("update_project", "{\"projectId\":\"c-test:p-test\"}", McpRole.Admin, "Rancher project update request failed")]
+    public async Task AppAndProjectToolsReturnFriendlyContentWhenRancherCallFails(string toolName, string? argumentsJson, McpRole role, string expected)
+    {
+        var catalog = new McpToolCatalog();
+        var tokenStore = new StaticTokenStore();
+        var executor = new McpToolExecutor(catalog, new ThrowingRancherApiService(), tokenStore);
+
+        JsonElement? arguments = null;
+        if (!string.IsNullOrWhiteSpace(argumentsJson))
+        {
+            using var doc = JsonDocument.Parse(argumentsJson);
+            arguments = doc.RootElement.Clone();
+        }
+
+        var result = await executor.ExecuteAsync(toolName, arguments, new McpPrincipal(role, false), CancellationToken.None);
+        using var serialized = JsonDocument.Parse(JsonSerializer.Serialize(result));
+        var text = serialized.RootElement
+            .GetProperty("content")[0]
+            .GetProperty("text")
+            .GetString();
+
+        Assert.NotNull(text);
+        Assert.Contains(expected, text);
+    }
+
     [Fact]
     public async Task ViewerCannotCallAdminOnlyTool()
     {
