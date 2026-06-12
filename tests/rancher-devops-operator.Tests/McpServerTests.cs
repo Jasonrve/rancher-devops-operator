@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -11,6 +12,30 @@ namespace rancher_devops_operator.Tests;
 
 public class McpServerTests
 {
+    [Theory]
+    [InlineData("get_rancher_version")]
+    [InlineData("check_rancher_api_health")]
+    [InlineData("get_rancher_server_health")]
+    [InlineData("get_rancher_recent_warnings")]
+    [InlineData("get_rancher_webhook_status")]
+    public async Task DiagnosticToolsReturnFriendlyContentWhenRancherCallFails(string toolName)
+    {
+        var catalog = new McpToolCatalog();
+        var tokenStore = new StaticTokenStore();
+        var executor = new McpToolExecutor(catalog, new ThrowingRancherApiService(), tokenStore);
+
+        var result = await executor.ExecuteAsync(toolName, null, McpPrincipal.AnonymousViewer(), CancellationToken.None);
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(result));
+
+        var text = doc.RootElement
+            .GetProperty("content")[0]
+            .GetProperty("text")
+            .GetString();
+
+        Assert.NotNull(text);
+        Assert.Contains("Rancher diagnostic request failed", text);
+    }
+
     [Fact]
     public async Task ToolsListWithoutToken_DefaultsToViewerRole()
     {
@@ -133,6 +158,29 @@ public class McpServerTests
         public Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken) => Task.FromResult(false);
         public Task<rancher_devops_operator.Models.RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherPrincipal?>(null);
         public Task<string> InvokeRawAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken) => Task.FromResult("{}");
+    }
+
+    private sealed class ThrowingRancherApiService : IRancherApiService
+    {
+        public Task<IReadOnlyList<rancher_devops_operator.Models.RancherCluster>> ListClustersAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<rancher_devops_operator.Models.RancherCluster>>([]);
+        public Task<IReadOnlyList<rancher_devops_operator.Models.RancherProject>> ListProjectsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<rancher_devops_operator.Models.RancherProject>>([]);
+        public Task<string?> GetClusterIdByNameAsync(string clusterName, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+        public Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+        public Task<rancher_devops_operator.Models.RancherProject?> CreateProjectAsync(string clusterId, string projectName, string? description, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherProject?>(null);
+        public Task<rancher_devops_operator.Models.RancherProject?> GetProjectByNameAsync(string clusterId, string projectName, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherProject?>(null);
+        public Task<bool> DeleteProjectAsync(string projectId, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<rancher_devops_operator.Models.RancherNamespace?> CreateNamespaceAsync(string projectId, string namespaceName, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherNamespace?>(null);
+        public Task<rancher_devops_operator.Models.RancherNamespace?> GetNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherNamespace?>(null);
+        public Task<rancher_devops_operator.Models.RancherNamespace?> UpdateNamespaceProjectAsync(string clusterId, string namespaceName, string newProjectId, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherNamespace?>(null);
+        public Task<bool> RemoveNamespaceFromProjectAsync(string clusterId, string namespaceName, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<List<rancher_devops_operator.Models.RancherNamespace>> GetProjectNamespacesAsync(string projectId, CancellationToken cancellationToken) => Task.FromResult(new List<rancher_devops_operator.Models.RancherNamespace>());
+        public Task<bool> DeleteNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<bool> EnsureNamespaceManagedByAsync(string clusterId, string namespaceName, bool createdByOperator, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<rancher_devops_operator.Models.RancherProjectRoleBinding?> CreateProjectMemberAsync(string projectId, string principalId, string role, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherProjectRoleBinding?>(null);
+        public Task<List<rancher_devops_operator.Models.RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken) => Task.FromResult(new List<rancher_devops_operator.Models.RancherProjectRoleBinding>());
+        public Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<rancher_devops_operator.Models.RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherPrincipal?>(null);
+        public Task<string> InvokeRawAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken) => Task.FromException<string>(new HttpRequestException($"Rancher API call {method.Method} {path} failed with status 500: boom"));
     }
 
     private sealed class StaticTokenStore : IMcpTokenStore

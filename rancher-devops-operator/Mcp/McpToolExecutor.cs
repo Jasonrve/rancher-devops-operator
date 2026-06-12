@@ -28,12 +28,12 @@ public sealed class McpToolExecutor : IMcpToolExecutor
         _tokenStore = tokenStore;
     }
 
-    public async Task<object> ExecuteAsync(string toolName, JsonElement? arguments, McpPrincipal principal, CancellationToken cancellationToken)
+    public Task<object> ExecuteAsync(string toolName, JsonElement? arguments, McpPrincipal principal, CancellationToken cancellationToken)
     {
         var tool = _catalog.Find(toolName);
         if (tool is null)
         {
-            return WrapText($"Unknown tool '{toolName}'.");
+            return Task.FromResult<object>(WrapText($"Unknown tool '{toolName}'."));
         }
 
         if (tool.MinimumRole > principal.Role)
@@ -48,24 +48,24 @@ public sealed class McpToolExecutor : IMcpToolExecutor
             "list_allowed_tools" => Task.FromResult<object>(WrapJson(BuildAllowedToolsPayload(principal))),
             "explain_user_access" => Task.FromResult<object>(WrapJson(BuildAccessExplanationPayload(principal))),
 
-            "get_rancher_version" => RawTextAsync(HttpMethod.Get, "/v3/settings/server-version", null, cancellationToken),
-            "check_rancher_api_health" => RawTextAsync(HttpMethod.Get, "/v3", null, cancellationToken),
-            "get_rancher_server_health" => RawTextAsync(HttpMethod.Get, "/healthz", null, cancellationToken),
-            "list_rancher_clusters" => Task.FromResult<object>(WrapJson(await _rancherApiService.ListClustersAsync(cancellationToken))),
-            "get_rancher_cluster" => await GetClusterReadAsync(arguments, cancellationToken),
-            "get_cluster_summary" => await GetClusterSummaryAsync(arguments, cancellationToken),
-            "get_cluster_status" => await GetClusterStatusAsync(arguments, cancellationToken),
-            "get_cluster_agent_status" => await GetClusterAgentStatusAsync(arguments, cancellationToken),
-            "get_cluster_registration_status" => await GetClusterRegistrationStatusAsync(arguments, cancellationToken),
-            "get_downstream_cluster_connectivity" => await GetDownstreamConnectivityAsync(arguments, cancellationToken),
-            "get_cluster_agent_diagnostics" => await GetClusterAgentDiagnosticsAsync(arguments, cancellationToken),
-            "get_rancher_recent_warnings" => RawTextAsync(HttpMethod.Get, "/v3/events?limit=25&sort=-timestamp", null, cancellationToken),
+            "get_rancher_version" => SafeRawTextAsync(HttpMethod.Get, "/v3/settings/server-version", null, cancellationToken),
+            "check_rancher_api_health" => SafeRawTextAsync(HttpMethod.Get, "/v3", null, cancellationToken),
+            "get_rancher_server_health" => SafeRawTextAsync(HttpMethod.Get, "/healthz", null, cancellationToken),
+            "list_rancher_clusters" => ListClustersWrappedAsync(cancellationToken),
+            "get_rancher_cluster" => GetClusterReadAsync(arguments, cancellationToken),
+            "get_cluster_summary" => GetClusterSummaryAsync(arguments, cancellationToken),
+            "get_cluster_status" => GetClusterStatusAsync(arguments, cancellationToken),
+            "get_cluster_agent_status" => GetClusterAgentStatusAsync(arguments, cancellationToken),
+            "get_cluster_registration_status" => GetClusterRegistrationStatusAsync(arguments, cancellationToken),
+            "get_downstream_cluster_connectivity" => GetDownstreamConnectivityAsync(arguments, cancellationToken),
+            "get_cluster_agent_diagnostics" => GetClusterAgentDiagnosticsAsync(arguments, cancellationToken),
+            "get_rancher_recent_warnings" => SafeRawTextAsync(HttpMethod.Get, "/v3/events?limit=25&sort=-timestamp", null, cancellationToken),
 
-            "list_projects" => Task.FromResult<object>(WrapJson(await _rancherApiService.ListProjectsAsync(cancellationToken))),
-            "get_project" => await GetProjectReadAsync(arguments, cancellationToken),
-            "list_project_namespaces" => await ListProjectNamespacesAsync(arguments, cancellationToken),
-            "list_project_members" => await ListProjectMembersAsync(arguments, cancellationToken),
-            "list_project_role_template_bindings" => await ListProjectRoleTemplateBindingsAsync(arguments, cancellationToken),
+            "list_projects" => ListProjectsWrappedAsync(cancellationToken),
+            "get_project" => GetProjectReadAsync(arguments, cancellationToken),
+            "list_project_namespaces" => ListProjectNamespacesAsync(arguments, cancellationToken),
+            "list_project_members" => ListProjectMembersAsync(arguments, cancellationToken),
+            "list_project_role_template_bindings" => ListProjectRoleTemplateBindingsAsync(arguments, cancellationToken),
             "list_cluster_role_template_bindings" => RawTextAsync(HttpMethod.Get, "/v3/clusterRoleTemplateBindings", null, cancellationToken),
 
             "list_rancher_users" => RawTextAsync(HttpMethod.Get, "/v3/users", null, cancellationToken),
@@ -74,62 +74,62 @@ public sealed class McpToolExecutor : IMcpToolExecutor
             "list_role_templates" => RawTextAsync(HttpMethod.Get, "/v3/roleTemplates", null, cancellationToken),
 
             "list_fleet_gitrepos" => RawTextAsync(HttpMethod.Get, "/v1/fleet.cattle.io.gitrepos", null, cancellationToken),
-            "get_fleet_gitrepo" => await GetFleetGitRepoAsync(arguments, cancellationToken),
+            "get_fleet_gitrepo" => GetFleetGitRepoAsync(arguments, cancellationToken),
             "list_fleet_bundles" => RawTextAsync(HttpMethod.Get, "/v1/fleet.cattle.io.bundles", null, cancellationToken),
-            "get_fleet_bundle_status" => await GetFleetBundleStatusAsync(arguments, cancellationToken),
-            "get_fleet_sync_status" => await GetFleetSyncStatusAsync(arguments, cancellationToken),
-            "get_fleet_deployment_errors" => await GetFleetDeploymentErrorsAsync(arguments, cancellationToken),
+            "get_fleet_bundle_status" => GetFleetBundleStatusAsync(arguments, cancellationToken),
+            "get_fleet_sync_status" => GetFleetSyncStatusAsync(arguments, cancellationToken),
+            "get_fleet_deployment_errors" => GetFleetDeploymentErrorsAsync(arguments, cancellationToken),
 
             "list_rancher_apps" => RawTextAsync(HttpMethod.Get, "/v1/apps", null, cancellationToken),
-            "get_rancher_app" => await GetRancherAppAsync(arguments, cancellationToken),
-            "get_rancher_app_values" => await GetRancherAppValuesAsync(arguments, cancellationToken),
+            "get_rancher_app" => GetRancherAppAsync(arguments, cancellationToken),
+            "get_rancher_app_values" => GetRancherAppValuesAsync(arguments, cancellationToken),
             "list_rancher_chart_repositories" => RawTextAsync(HttpMethod.Get, "/v1/catalog.cattle.io.clusterrepos", null, cancellationToken),
-            "search_rancher_catalog_charts" => await SearchRancherCatalogChartsAsync(arguments, cancellationToken),
-            "get_rancher_webhook_status" => RawTextAsync(HttpMethod.Get, "/v3/webhooks", null, cancellationToken),
+            "search_rancher_catalog_charts" => SearchRancherCatalogChartsAsync(arguments, cancellationToken),
+            "get_rancher_webhook_status" => SafeRawTextAsync(HttpMethod.Get, "/v3/webhooks", null, cancellationToken),
 
-            "list_mcp_tokens" => Task.FromResult<object>(WrapJson(await _tokenStore.ListAsync(cancellationToken))),
-            "create_mcp_token" => await CreateTokenAsync(arguments, cancellationToken),
-            "rotate_mcp_token" => await RotateTokenAsync(arguments, cancellationToken),
-            "revoke_mcp_token" => await RevokeTokenAsync(arguments, cancellationToken),
+            "list_mcp_tokens" => ListTokensWrappedAsync(cancellationToken),
+            "create_mcp_token" => CreateTokenAsync(arguments, cancellationToken),
+            "rotate_mcp_token" => RotateTokenAsync(arguments, cancellationToken),
+            "revoke_mcp_token" => RevokeTokenAsync(arguments, cancellationToken),
 
-            "import_cluster" => await ImportClusterAsync(arguments, cancellationToken),
-            "generate_cluster_registration_command" => await GenerateClusterRegistrationCommandAsync(arguments, cancellationToken),
-            "rotate_cluster_registration_token" => await RotateClusterRegistrationTokenAsync(arguments, cancellationToken),
-            "update_cluster_labels" => await UpdateClusterLabelsAsync(arguments, cancellationToken),
-            "update_cluster_annotations" => await UpdateClusterAnnotationsAsync(arguments, cancellationToken),
-            "delete_rancher_cluster" => await DeleteClusterAsync(arguments, cancellationToken),
-            "restart_cluster_agent" => await RestartClusterAgentAsync(arguments, cancellationToken),
-            "redeploy_cluster_agent" => await RedeployClusterAgentAsync(arguments, cancellationToken),
-            "regenerate_cluster_agent_manifest" => await RegenerateClusterAgentManifestAsync(arguments, cancellationToken),
+            "import_cluster" => ImportClusterAsync(arguments, cancellationToken),
+            "generate_cluster_registration_command" => GenerateClusterRegistrationCommandAsync(arguments, cancellationToken),
+            "rotate_cluster_registration_token" => RotateClusterRegistrationTokenAsync(arguments, cancellationToken),
+            "update_cluster_labels" => UpdateClusterLabelsAsync(arguments, cancellationToken),
+            "update_cluster_annotations" => UpdateClusterAnnotationsAsync(arguments, cancellationToken),
+            "delete_rancher_cluster" => DeleteClusterAsync(arguments, cancellationToken),
+            "restart_cluster_agent" => RestartClusterAgentAsync(arguments, cancellationToken),
+            "redeploy_cluster_agent" => RedeployClusterAgentAsync(arguments, cancellationToken),
+            "regenerate_cluster_agent_manifest" => RegenerateClusterAgentManifestAsync(arguments, cancellationToken),
 
-            "create_project" => await CreateProjectAsync(arguments, cancellationToken),
-            "update_project" => await UpdateProjectAsync(arguments, cancellationToken),
-            "delete_project" => await DeleteProjectAsync(arguments, cancellationToken),
-            "move_namespace_to_project" => await MoveNamespaceToProjectAsync(arguments, cancellationToken),
-            "assign_project_member" => await AssignProjectMemberAsync(arguments, cancellationToken),
-            "remove_project_member" => await RemoveProjectMemberAsync(arguments, cancellationToken),
-            "assign_global_role" => await AssignGlobalRoleAsync(arguments, cancellationToken),
-            "remove_global_role" => await RemoveGlobalRoleAsync(arguments, cancellationToken),
-            "assign_cluster_role" => await AssignClusterRoleAsync(arguments, cancellationToken),
-            "remove_cluster_role" => await RemoveClusterRoleAsync(arguments, cancellationToken),
-            "assign_project_role" => await AssignProjectRoleAsync(arguments, cancellationToken),
-            "remove_project_role" => await RemoveProjectRoleAsync(arguments, cancellationToken),
+            "create_project" => CreateProjectAsync(arguments, cancellationToken),
+            "update_project" => UpdateProjectAsync(arguments, cancellationToken),
+            "delete_project" => DeleteProjectAsync(arguments, cancellationToken),
+            "move_namespace_to_project" => MoveNamespaceToProjectAsync(arguments, cancellationToken),
+            "assign_project_member" => AssignProjectMemberAsync(arguments, cancellationToken),
+            "remove_project_member" => RemoveProjectMemberAsync(arguments, cancellationToken),
+            "assign_global_role" => AssignGlobalRoleAsync(arguments, cancellationToken),
+            "remove_global_role" => RemoveGlobalRoleAsync(arguments, cancellationToken),
+            "assign_cluster_role" => AssignClusterRoleAsync(arguments, cancellationToken),
+            "remove_cluster_role" => RemoveClusterRoleAsync(arguments, cancellationToken),
+            "assign_project_role" => AssignProjectRoleAsync(arguments, cancellationToken),
+            "remove_project_role" => RemoveProjectRoleAsync(arguments, cancellationToken),
 
-            "create_fleet_gitrepo" => await CreateFleetGitRepoAsync(arguments, cancellationToken),
-            "update_fleet_gitrepo" => await UpdateFleetGitRepoAsync(arguments, cancellationToken),
-            "delete_fleet_gitrepo" => await DeleteFleetGitRepoAsync(arguments, cancellationToken),
-            "force_fleet_sync" => await ForceFleetSyncAsync(arguments, cancellationToken),
-            "pause_fleet_gitrepo" => await PauseFleetGitRepoAsync(arguments, cancellationToken),
-            "resume_fleet_gitrepo" => await ResumeFleetGitRepoAsync(arguments, cancellationToken),
+            "create_fleet_gitrepo" => CreateFleetGitRepoAsync(arguments, cancellationToken),
+            "update_fleet_gitrepo" => UpdateFleetGitRepoAsync(arguments, cancellationToken),
+            "delete_fleet_gitrepo" => DeleteFleetGitRepoAsync(arguments, cancellationToken),
+            "force_fleet_sync" => ForceFleetSyncAsync(arguments, cancellationToken),
+            "pause_fleet_gitrepo" => PauseFleetGitRepoAsync(arguments, cancellationToken),
+            "resume_fleet_gitrepo" => ResumeFleetGitRepoAsync(arguments, cancellationToken),
 
-            "install_rancher_app" => await InstallRancherAppAsync(arguments, cancellationToken),
-            "upgrade_rancher_app" => await UpgradeRancherAppAsync(arguments, cancellationToken),
-            "rollback_rancher_app" => await RollbackRancherAppAsync(arguments, cancellationToken),
-            "uninstall_rancher_app" => await UninstallRancherAppAsync(arguments, cancellationToken),
-            "add_rancher_chart_repository" => await AddRancherChartRepositoryAsync(arguments, cancellationToken),
-            "refresh_rancher_chart_repository" => await RefreshRancherChartRepositoryAsync(arguments, cancellationToken),
+            "install_rancher_app" => InstallRancherAppAsync(arguments, cancellationToken),
+            "upgrade_rancher_app" => UpgradeRancherAppAsync(arguments, cancellationToken),
+            "rollback_rancher_app" => RollbackRancherAppAsync(arguments, cancellationToken),
+            "uninstall_rancher_app" => UninstallRancherAppAsync(arguments, cancellationToken),
+            "add_rancher_chart_repository" => AddRancherChartRepositoryAsync(arguments, cancellationToken),
+            "refresh_rancher_chart_repository" => RefreshRancherChartRepositoryAsync(arguments, cancellationToken),
 
-            _ => WrapText($"Tool '{toolName}' is enabled but no executor was registered."),
+            _ => Task.FromResult<object>(WrapText($"Tool '{toolName}' is enabled but no executor was registered.")),
         };
     }
 
@@ -182,6 +182,27 @@ public sealed class McpToolExecutor : IMcpToolExecutor
 
     private async Task<object> RawTextAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
         => WrapText(await _rancherApiService.InvokeRawAsync(method, path, body, cancellationToken));
+
+    private async Task<object> ListClustersWrappedAsync(CancellationToken cancellationToken)
+        => WrapJson(await _rancherApiService.ListClustersAsync(cancellationToken));
+
+    private async Task<object> ListProjectsWrappedAsync(CancellationToken cancellationToken)
+        => WrapJson(await _rancherApiService.ListProjectsAsync(cancellationToken));
+
+    private async Task<object> ListTokensWrappedAsync(CancellationToken cancellationToken)
+        => WrapJson(await _tokenStore.ListAsync(cancellationToken));
+
+    private async Task<object> SafeRawTextAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await RawTextAsync(method, path, body, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            return WrapText($"Rancher diagnostic request failed for {method.Method} {path}. {ex.Message}");
+        }
+    }
 
     private async Task<object> GetClusterReadAsync(JsonElement? arguments, CancellationToken cancellationToken)
     {
