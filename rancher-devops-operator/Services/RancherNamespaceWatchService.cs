@@ -103,6 +103,17 @@ public class RancherNamespaceWatchService : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in observe service");
+                // Avoid a hot loop if discovery fails repeatedly (for example when the CRD is temporarily unavailable).
+                // The normal path already sleeps on success; failures should back off as well.
+                var retryDelay = _observeMethod == "poll" ? _pollingInterval : _clusterCheckInterval;
+                try
+                {
+                    await Task.Delay(retryDelay, stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Exit promptly when shutting down.
+                }
             }
         }
 
@@ -302,14 +313,29 @@ public class RancherNamespaceWatchService : BackgroundService
 
     private async Task<List<V1Project>> GetObserveProjectsAsync(CancellationToken cancellationToken)
     {
-        var allProjects = await _kubernetesClient.ListAsync<V1Project>(cancellationToken: cancellationToken);
-        return allProjects.Where(p => 
+        try
         {
-            if (p.Spec.ManagementPolicies == null || p.Spec.ManagementPolicies.Count == 0)
-                return false;
-            return p.Spec.ManagementPolicies.Any(policy => 
-                string.Equals(policy, "Observe", StringComparison.OrdinalIgnoreCase));
-        }).ToList();
+            var allProjects = await _kubernetesClient.ListAsync<V1Project>(cancellationToken: cancellationToken);
+            return allProjects.Where(p => 
+            {
+                if (p.Spec.ManagementPolicies == null || p.Spec.ManagementPolicies.Count == 0)
+                    return false;
+                return p.Spec.ManagementPolicies.Any(policy => 
+                    string.Equals(policy, "Observe", StringComparison.OrdinalIgnoreCase));
+            }).ToList();
+        }
+        catch (Exception ex) when (IsNotFoundError(ex))
+        {
+            _logger.LogWarning("Observe project CRD/API not found yet; skipping discovery until it becomes available");
+            return new List<V1Project>();
+        }
+    }
+
+    private static bool IsNotFoundError(Exception ex)
+    {
+        var typeName = ex.GetType().FullName ?? string.Empty;
+        return typeName.Contains("HttpOperationException", StringComparison.OrdinalIgnoreCase)
+               && ex.Message.Contains("NotFound", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task WatchClusterNamespacesAsync(ClusterWatch clusterWatch, CancellationToken cancellationToken)
