@@ -57,11 +57,6 @@ public sealed class McpToolCatalog : IMcpToolCatalog
         Tool("search_rancher_catalog_charts", "Search the Rancher chart catalog.", category: "apps"),
         Tool("get_rancher_webhook_status", "Return webhook status or webhook inventory.", category: "apps"),
 
-        Tool("create_mcp_token", "Create a new MCP bearer token.", McpRole.Admin, readOnly: false, category: "tokens"),
-        Tool("rotate_mcp_token", "Rotate an existing MCP bearer token.", McpRole.Admin, readOnly: false, category: "tokens"),
-        Tool("revoke_mcp_token", "Revoke an MCP bearer token.", McpRole.Admin, readOnly: false, category: "tokens"),
-        Tool("list_mcp_tokens", "List the stored MCP bearer tokens.", McpRole.Admin, readOnly: true, category: "tokens"),
-
         Tool("import_cluster", "Create or import a downstream cluster into Rancher.", McpRole.Admin, readOnly: false, category: "clusters"),
         Tool("generate_cluster_registration_command", "Generate a downstream cluster registration command.", McpRole.Admin, readOnly: false, category: "clusters"),
         Tool("rotate_cluster_registration_token", "Rotate the downstream cluster registration token.", McpRole.Admin, readOnly: false, category: "clusters"),
@@ -105,9 +100,6 @@ public sealed class McpToolCatalog : IMcpToolCatalog
     {
         ["cluster_list"] = "list_rancher_clusters",
         ["project_list"] = "list_projects",
-        ["mcp_token_list"] = "list_mcp_tokens",
-        ["mcp_token_create"] = "create_mcp_token",
-        ["mcp_token_delete"] = "revoke_mcp_token",
     };
 
     public IReadOnlyList<McpToolDefinition> GetTools(McpRole role)

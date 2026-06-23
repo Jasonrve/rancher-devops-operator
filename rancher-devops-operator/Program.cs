@@ -50,6 +50,7 @@ builder.Services.AddHttpClient("RancherAuth")
         return handler;
     });
 
+builder.Services.AddSingleton<IRancherPassthroughTokenContext, RancherPassthroughTokenContext>();
 builder.Services.AddSingleton<IRancherAuthService, RancherAuthService>();
 builder.Services.AddSingleton<IRancherApiService, RancherApiService>();
 builder.Services.AddSingleton<IKubernetesEventService, KubernetesEventService>();

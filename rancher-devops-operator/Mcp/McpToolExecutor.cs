@@ -140,6 +140,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
             role = principal.Role.ToString().ToLowerInvariant(),
             isAnonymous = principal.IsAnonymous,
             tokenSecretName = principal.TokenSecretName,
+            authMode = principal.IsAnonymous ? "anonymous" : "passthrough",
         },
     };
 
@@ -147,7 +148,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
     {
         role = principal.Role.ToString().ToLowerInvariant(),
         isAnonymous = principal.IsAnonymous,
-        source = principal.IsAnonymous ? "anonymous" : "token",
+        source = principal.IsAnonymous ? "anonymous" : "passthrough",
     };
 
     private object BuildAllowedToolsPayload(McpPrincipal principal)
@@ -177,7 +178,7 @@ public sealed class McpToolExecutor : IMcpToolExecutor
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(value => value)
                 .ToArray(),
-            note = principal.IsAnonymous ? "Anonymous principals can only access viewer tools." : "Authenticated principals inherit the role associated with their MCP token.",
+            note = principal.IsAnonymous ? "Anonymous principals can only access viewer tools." : "Authenticated principals use the caller-provided Rancher token; Rancher enforces the real permission boundary.",
         };
 
     private async Task<object> RawTextAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)

@@ -20,15 +20,16 @@ public class McpToolCatalogTests
     }
 
     [Fact]
-    public void AdminRole_SeesTokenManagementAndWriteTools()
+    public void AdminRole_SeesWriteTools()
     {
         var catalog = new McpToolCatalog();
 
         var tools = catalog.GetTools(McpRole.Admin).Select(tool => tool.Name).ToArray();
 
-        Assert.Contains("create_mcp_token", tools);
-        Assert.Contains("revoke_mcp_token", tools);
         Assert.Contains("delete_rancher_cluster", tools);
         Assert.Contains("install_rancher_app", tools);
+        Assert.Contains("create_project", tools);
+        Assert.DoesNotContain("create_mcp_token", tools);
+        Assert.DoesNotContain("revoke_mcp_token", tools);
     }
 }

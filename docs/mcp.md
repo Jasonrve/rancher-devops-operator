@@ -1,6 +1,8 @@
-# MCP server and token RBAC
+# MCP passthrough identity
 
-The operator now exposes an MCP JSON-RPC endpoint on the same workload, gated by bearer tokens backed by Kubernetes Secrets.
+The MCP endpoint now uses *passthrough identity*: every MCP request must include a Rancher bearer token, and that exact token is forwarded to Rancher for the downstream API calls made by the MCP server.
+
+The operator still needs its own Rancher access for background reconciliation. That operator credential is separate from the MCP request identity.
 
 ## Enablement
 
@@ -14,77 +16,90 @@ The deployment exposes the MCP port as a separate container port, the chart adds
 
 The default external host is `{{ include "rancher-devops-operator.fullname" . }}.oly.workside.win`, but you can override it with `mcp.ingress.host`.
 
-## Authentication and authorization
+## Authentication
 
-Authorization is derived from the bearer token in the `Authorization` header:
+MCP authentication is header-based:
 
-- no token: anonymous viewer
-- valid token: role is read from the matching Kubernetes Secret
-- invalid token: `401 Unauthorized`
-- valid token but insufficient role: `403 Forbidden`
+- `Authorization: Bearer <RANCHER_TOKEN>` is required
+- missing or malformed headers return `401 Unauthorized`
+- the bearer token is validated against Rancher and then reused for MCP tool execution
+- the server does **not** mint, store, or rotate a separate MCP bearer token for this transport path
 
-The role model is intentionally small:
+In practice, the MCP server acts as a thin identity-preserving proxy: the caller's Rancher token becomes the authorization context for the request, and Rancher remains the final policy decision point.
 
-- `viewer` — read-only tools
-- `admin` — everything viewer can do, plus write/admin tools and token management
+## Example requests
 
-`tools/list` is filtered by the resolved role, and `tools/call` checks authorization again before execution.
-
-## Secret storage model
-
-Tokens are stored in Kubernetes Secrets only.
-
-Each token Secret stores:
-
-- `tokenHash` — SHA-256 hash of the raw token
-- `role` — `viewer` or `admin`
-- `createdAt` — timestamp used for listing/order
-
-The raw token itself is never echoed by the operator; the secret name is returned and the token is stored in Kubernetes Secrets.
-
-Token Secrets are labeled so the operator can discover them safely:
-
-- `app.kubernetes.io/managed-by=rancher-devops-operator`
-- `mcp.devops.io/mcp-token=true`
-- `role=<viewer|admin>`
-
-## Bootstrap path for the first admin token
-
-If there is no admin token yet, set a bootstrap hash in Helm or the environment:
-
-- `Mcp__BootstrapAdminTokenHash`
-- optionally `Mcp__BootstrapAdminTokenSecretName`
-
-Recommended workflow:
-
-1. Generate a raw token outside the cluster.
-2. Hash it with SHA-256.
-3. Set the hash in `Mcp__BootstrapAdminTokenHash`.
-4. Deploy the operator.
-5. Use the raw token as the first admin bearer token.
-
-Example:
+### Direct HTTP call
 
 ```bash
-RAW_TOKEN="mcp_$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
-TOKEN_HASH="$(printf '%s' "$RAW_TOKEN" | sha256sum | awk '{print $1}')"
-helm upgrade --install rancher-devops-operator ./helm/rancher-devops-operator \
-  --set-string mcp.bootstrapAdminTokenHash="$TOKEN_HASH"
+curl -s http://operator:8080/mcp \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer ${RANCHER_TOKEN}" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-Keep the raw token somewhere safe; the cluster only stores the hash.
+### Claude Desktop
 
-## Token management tools
+Add the MCP server to `claude_desktop_config.json` (or your equivalent Desktop config file):
 
-Admin-only tools:
+```json
+{
+  "mcpServers": {
+    "rancher-devops-operator": {
+      "url": "http://operator:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer ${RANCHER_TOKEN}"
+      }
+    }
+  }
+}
+```
 
-- `list_mcp_tokens`
-- `create_mcp_token`
-- `rotate_mcp_token`
-- `revoke_mcp_token`
+### Claude CLI / Claude Code
 
-`create_mcp_token` stores the token hash in Kubernetes and returns only the secret name and role metadata.
-`revoke_mcp_token` removes the matching Secret.
+Use the same server definition in the Claude CLI MCP config:
+
+```json
+{
+  "mcpServers": {
+    "rancher-devops-operator": {
+      "url": "http://operator:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer ${RANCHER_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+If your CLI uses a command-style registration flow instead of a JSON file, the important parts are still the same: the MCP server URL and an `Authorization: Bearer <RANCHER_TOKEN>` header carrying the Rancher token.
+
+### VS Code
+
+Add the same MCP server entry to your VS Code MCP settings file or workspace config:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "rancher-devops-operator": {
+        "url": "http://operator:8080/mcp",
+        "headers": {
+          "Authorization": "Bearer ${RANCHER_TOKEN}"
+        }
+      }
+    }
+  }
+}
+```
+
+If your VS Code extension stores MCP servers under a slightly different key, keep the same `url` and `Authorization` header values.
+
+## Security notes
+
+- Treat the Rancher token as a secret; never commit it to source control.
+- Prefer environment variable interpolation or secret managers over embedding the token directly in the config file.
+- Keep the operator's Rancher credential and the MCP caller's token logically separate.
 
 ## Tool inventory
 
@@ -133,10 +148,6 @@ Viewer tools:
 
 Admin-only tools:
 
-- `list_mcp_tokens`
-- `create_mcp_token`
-- `rotate_mcp_token`
-- `revoke_mcp_token`
 - `import_cluster`
 - `generate_cluster_registration_command`
 - `rotate_cluster_registration_token`
@@ -171,11 +182,11 @@ Admin-only tools:
 - `add_rancher_chart_repository`
 - `refresh_rancher_chart_repository`
 
-Legacy aliases such as `cluster_list`, `project_list`, and the `mcp_token_*` names are still accepted for compatibility, but they are no longer shown by `tools/list`.
+Legacy aliases such as `cluster_list` and `project_list` are still accepted for compatibility, but they are no longer shown by `tools/list`.
 
 ## Example client request
 
-Anonymous viewer list:
+Authenticated HTTP call:
 
 curl -s http://operator:8080/mcp \
   -H 'content-type: application/json' \
@@ -185,11 +196,11 @@ Authenticated token call:
 
 curl -s http://operator:8080/mcp \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer ***" \
+  -H "authorization: Bearer ${RANCHER_TOKEN}" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_rancher_clusters","arguments":{}}}'
 
-## Narrow RBAC considerations
+## Deployment notes
 
-The deployment needs a namespaced Role/RoleBinding for the MCP token namespace so the token store can create, list, and delete Secret-backed tokens. Keep the operator service account scoped to the namespace that holds MCP token Secrets.
+The operator still needs its own Rancher credential for background reconciliation. MCP passthrough auth does not replace that operator credential; it only changes how MCP requests authenticate.
 
 The chart also exposes a dedicated MCP service port and an ingress route so clusters can route MCP traffic independently from the operator's other endpoints.

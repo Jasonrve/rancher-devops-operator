@@ -17,6 +17,7 @@ public class RancherAuthService : IRancherAuthService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<RancherAuthService> _logger;
+    private readonly IRancherPassthroughTokenContext _passthroughTokenContext;
     private readonly string _rancherUrl;
     private readonly string? _token;
     private readonly string? _username;
@@ -29,10 +30,12 @@ public class RancherAuthService : IRancherAuthService
     public RancherAuthService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
+        IRancherPassthroughTokenContext passthroughTokenContext,
         ILogger<RancherAuthService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
+        _passthroughTokenContext = passthroughTokenContext;
         _logger = logger;
         _rancherUrl = configuration["Rancher:Url"] ?? "https://rancher.local";
         _token = configuration["Rancher:Token"];
@@ -50,6 +53,12 @@ public class RancherAuthService : IRancherAuthService
 
     public async Task<string> GetOrCreateTokenAsync(CancellationToken cancellationToken)
     {
+        if (_passthroughTokenContext.TryGetToken(out var passthroughToken))
+        {
+            _logger.LogDebug("Using caller-provided Rancher token from MCP request context");
+            return passthroughToken;
+        }
+
         // If a static token is provided, use it
         if (!string.IsNullOrEmpty(_token))
         {
