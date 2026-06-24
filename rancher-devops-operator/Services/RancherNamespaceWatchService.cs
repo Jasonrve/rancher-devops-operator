@@ -22,7 +22,7 @@ public class RancherNamespaceWatchService : BackgroundService
     private readonly IKubernetesEventService _eventService;
     private readonly TimeSpan _clusterCheckInterval;
     private readonly TimeSpan _pollingInterval;
-    private readonly string _observeMethod;
+    private string _observeMethod;
     private readonly Dictionary<string, ClusterWatch> _activeWatches = new();
     private readonly object _watchesLock = new();
     // Cache of last seen namespaces per cluster for poll-based deletion detection
@@ -102,6 +102,12 @@ public class RancherNamespaceWatchService : BackgroundService
             }
             catch (Exception ex)
             {
+                if (IsUnauthorizedKubernetesError(ex))
+                {
+                    _logger.LogError(ex, "Kubernetes access is unauthorized. Disabling observe mode until valid cluster credentials are provided.");
+                    DisableObserveMode();
+                }
+
                 _logger.LogError(ex, "Error in observe service");
             }
         }
@@ -119,6 +125,37 @@ public class RancherNamespaceWatchService : BackgroundService
         }
 
         _logger.LogInformation("Rancher Namespace Observe Service stopped");
+    }
+
+    private void DisableObserveMode()
+    {
+        if (_observeMethod == "none")
+        {
+            return;
+        }
+
+        _observeMethod = "none";
+
+        lock (_watchesLock)
+        {
+            foreach (var watch in _activeWatches.Values)
+            {
+                watch.CancellationTokenSource.Cancel();
+                watch.CancellationTokenSource.Dispose();
+                watch.K8sClient.Dispose();
+            }
+
+            _activeWatches.Clear();
+            _clusterNamespaceCache.Clear();
+        }
+    }
+
+    private static bool IsUnauthorizedKubernetesError(Exception ex)
+    {
+        var message = ex.ToString();
+        return message.Contains("Dashboard login required", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("401", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task CheckAndUpdateClusterWatchesAsync(CancellationToken stoppingToken)

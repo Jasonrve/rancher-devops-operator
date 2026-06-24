@@ -9,6 +9,8 @@ namespace rancher_devops_operator.Services;
 
 public interface IRancherApiService
 {
+    Task<List<RancherCluster>> ListClustersAsync(CancellationToken cancellationToken);
+    Task<List<RancherProject>> ListProjectsAsync(CancellationToken cancellationToken);
     Task<string?> GetClusterIdByNameAsync(string clusterName, CancellationToken cancellationToken);
     Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken);
     Task<RancherProject?> CreateProjectAsync(string clusterId, string projectName, string? description, CancellationToken cancellationToken);
@@ -41,6 +43,26 @@ public class RancherApiService : IRancherApiService
     private const string CreatedByKey = "app.kubernetes.io/created-by";
     private const string RancherProjectAnnotationKey = "field.cattle.io/projectId";
 
+    public async Task<List<RancherCluster>> ListClustersAsync(CancellationToken cancellationToken)
+    {
+        var response = await _httpClient.GetAsync("/v3/clusters", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        var clusterList = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherClusterList);
+        return clusterList?.Data ?? new List<RancherCluster>();
+    }
+
+    public async Task<List<RancherProject>> ListProjectsAsync(CancellationToken cancellationToken)
+    {
+        var response = await _httpClient.GetAsync("/v3/projects", cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        var projectList = JsonSerializer.Deserialize(content, RancherJsonSerializerContext.Default.RancherProjectList);
+        return projectList?.Data ?? new List<RancherProject>();
+    }
+
     public RancherApiService(
         IHttpClientFactory httpClientFactory, 
         IRancherAuthService authService,
@@ -55,13 +77,12 @@ public class RancherApiService : IRancherApiService
 
     private async Task EnsureAuthenticatedAsync(CancellationToken cancellationToken)
     {
-        var token = await _authService.GetOrCreateTokenAsync(cancellationToken);
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var authorization = await _authService.GetAuthorizationHeaderAsync(cancellationToken);
+        _httpClient.DefaultRequestHeaders.Authorization = authorization;
     }
 
     public async Task<string?> GetClusterIdByNameAsync(string clusterName, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var success = false;
         try
@@ -98,7 +119,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<string?> GetClusterKubeconfigAsync(string clusterId, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var success = false;
         try
@@ -140,7 +160,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<RancherProject?> CreateProjectAsync(string clusterId, string projectName, string? description, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Creating project {ProjectName} in cluster {ClusterId}", projectName, clusterId);
@@ -177,7 +196,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<RancherProject?> GetProjectByNameAsync(string clusterId, string projectName, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Fetching project {ProjectName} in cluster {ClusterId}", projectName, clusterId);
@@ -199,7 +217,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<bool> DeleteProjectAsync(string projectId, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Deleting project {ProjectId}", projectId);
@@ -232,7 +249,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<RancherNamespace?> CreateNamespaceAsync(string projectId, string namespaceName, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Creating namespace {NamespaceName} in project {ProjectId}", namespaceName, projectId);
@@ -287,7 +303,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<List<RancherNamespace>> GetProjectNamespacesAsync(string projectId, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Fetching namespaces for project {ProjectId}", projectId);
@@ -316,7 +331,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<RancherNamespace?> GetNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogDebug("Fetching namespace {NamespaceName} in cluster {ClusterId}", namespaceName, clusterId);
@@ -345,7 +359,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<RancherNamespace?> UpdateNamespaceProjectAsync(string clusterId, string namespaceName, string newProjectId, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Updating namespace {NamespaceName} to project {ProjectId}", namespaceName, newProjectId);
@@ -399,7 +412,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<bool> RemoveNamespaceFromProjectAsync(string clusterId, string namespaceName, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Removing namespace {NamespaceName} from its project using Rancher move action", namespaceName);
@@ -453,7 +465,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<bool> EnsureNamespaceManagedByAsync(string clusterId, string namespaceName, bool createdByOperator, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             var existing = await GetNamespaceAsync(clusterId, namespaceName, cancellationToken);
@@ -529,7 +540,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<bool> DeleteNamespaceAsync(string clusterId, string namespaceName, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Deleting namespace {NamespaceName} in cluster {ClusterId}", namespaceName, clusterId);
@@ -562,7 +572,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<RancherProjectRoleBinding?> CreateProjectMemberAsync(string projectId, string principalId, string role, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogDebug("Adding member {PrincipalId} with role {Role} to project {ProjectId}", principalId, role, projectId);
@@ -614,7 +623,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<List<RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogDebug("Fetching members for project {ProjectId}", projectId);
@@ -635,7 +643,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Deleting project member binding {BindingId}", bindingId);
@@ -653,7 +660,6 @@ public class RancherApiService : IRancherApiService
 
     public async Task<RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken)
     {
-        await EnsureAuthenticatedAsync(cancellationToken);
         try
         {
             _logger.LogInformation("Searching principal name {PrincipalName} via Rancher search API", principalName);
@@ -664,7 +670,7 @@ public class RancherApiService : IRancherApiService
                 principalType = (string?)null
             };
 
-            var json = JsonSerializer.Serialize(payload, _jsonOptions);
+            var json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync("/v3/principals?action=search", content, cancellationToken);
@@ -676,8 +682,44 @@ public class RancherApiService : IRancherApiService
             }
 
             var respContent = await response.Content.ReadAsStringAsync(cancellationToken);
-            var list = JsonSerializer.Deserialize(respContent, RancherJsonSerializerContext.Default.RancherPrincipalList);
-            var match = list?.Data.FirstOrDefault(p => p.Name.Equals(principalName, StringComparison.OrdinalIgnoreCase));
+            using var doc = JsonDocument.Parse(respContent);
+            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            {
+                _logger.LogWarning("Principal search returned no data for {PrincipalName}", principalName);
+                return null;
+            }
+
+            RancherPrincipal? match = null;
+            foreach (var item in data.EnumerateArray())
+            {
+                var name = item.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+                var loginName = item.TryGetProperty("loginName", out var loginNameProp) ? loginNameProp.GetString() : null;
+                if ((name != null && name.Equals(principalName, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(loginName) && loginName.Equals(principalName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    match = new RancherPrincipal
+                    {
+                        Id = item.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? string.Empty : string.Empty,
+                        Name = name ?? string.Empty,
+                        LoginName = loginName,
+                        PrincipalType = item.TryGetProperty("principalType", out var typeProp) ? typeProp.GetString() ?? string.Empty : string.Empty,
+                    };
+                    break;
+                }
+            }
+
+            if (match == null && data.GetArrayLength() == 1)
+            {
+                var item = data.EnumerateArray().First();
+                match = new RancherPrincipal
+                {
+                    Id = item.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? string.Empty : string.Empty,
+                    Name = item.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? string.Empty : string.Empty,
+                    LoginName = item.TryGetProperty("loginName", out var loginNameProp) ? loginNameProp.GetString() : null,
+                    PrincipalType = item.TryGetProperty("principalType", out var typeProp) ? typeProp.GetString() ?? string.Empty : string.Empty,
+                };
+            }
+
             if (match == null)
             {
                 _logger.LogWarning("Principal name {PrincipalName} not found in search results", principalName);

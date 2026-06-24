@@ -60,14 +60,9 @@ public class RancherWebSocketService : BackgroundService
         _webSocket?.Dispose();
         _webSocket = new ClientWebSocket();
 
-        // Get authentication token
-        var token = await _authService.GetOrCreateTokenAsync(stoppingToken);
-        
-        // Rancher WebSocket API requires token in Authorization header as Basic auth
-        // Token format is "token-xxxxx:yyyyyy" which is username:password
-        var tokenBytes = Encoding.UTF8.GetBytes(token);
-        var base64Token = Convert.ToBase64String(tokenBytes);
-        _webSocket.Options.SetRequestHeader("Authorization", $"Basic {base64Token}");
+        // Get authentication header
+        var authorization = await _authService.GetAuthorizationHeaderAsync(stoppingToken);
+        _webSocket.Options.SetRequestHeader("Authorization", authorization.ToString());
         
         // Allow insecure SSL if configured
         var allowInsecure = _configuration.GetValue<bool>("Rancher:AllowInsecureSsl", false);

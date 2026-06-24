@@ -8,7 +8,7 @@ namespace rancher_devops_operator.Services;
 
 public interface IRancherAuthService
 {
-    Task<string> GetOrCreateTokenAsync(CancellationToken cancellationToken);
+    Task<AuthenticationHeaderValue> GetAuthorizationHeaderAsync(CancellationToken cancellationToken);
     void ConfigureHttpClient(HttpClient httpClient);
 }
 
@@ -21,6 +21,7 @@ public class RancherAuthService : IRancherAuthService
     private readonly string? _token;
     private readonly string? _username;
     private readonly string? _password;
+    private readonly IRancherRequestAuthContext _requestAuthContext;
     
     private string? _cachedToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
@@ -29,60 +30,59 @@ public class RancherAuthService : IRancherAuthService
     public RancherAuthService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
+        IRancherRequestAuthContext requestAuthContext,
         ILogger<RancherAuthService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
+        _requestAuthContext = requestAuthContext;
         _logger = logger;
         _rancherUrl = configuration["Rancher:Url"] ?? "https://rancher.local";
         _token = configuration["Rancher:Token"];
         _username = configuration["Rancher:Username"];
         _password = configuration["Rancher:Password"];
-
-        // Validate configuration
-        if (string.IsNullOrEmpty(_token) && 
-            (string.IsNullOrEmpty(_username) || string.IsNullOrEmpty(_password)))
-        {
-            throw new InvalidOperationException(
-                "Rancher authentication not configured. Provide either Token or Username/Password");
-        }
     }
 
-    public async Task<string> GetOrCreateTokenAsync(CancellationToken cancellationToken)
+    public async Task<AuthenticationHeaderValue> GetAuthorizationHeaderAsync(CancellationToken cancellationToken)
     {
-        // If a static token is provided, use it
+        var passthrough = _requestAuthContext.CurrentAuthorizationHeader;
+        if (!string.IsNullOrWhiteSpace(passthrough))
+        {
+            return AuthenticationHeaderValue.Parse(passthrough);
+        }
+
         if (!string.IsNullOrEmpty(_token))
         {
             _logger.LogDebug("Using static token for authentication");
-            return _token;
+            return new AuthenticationHeaderValue("Bearer", _token);
         }
 
-        // Check if cached token is still valid
         if (!string.IsNullOrEmpty(_cachedToken) && DateTime.UtcNow < _tokenExpiry)
         {
             _logger.LogDebug("Using cached token");
-            return _cachedToken;
+            return new AuthenticationHeaderValue("Bearer", _cachedToken);
+        }
+
+        if (string.IsNullOrEmpty(_username) || string.IsNullOrEmpty(_password))
+        {
+            throw new InvalidOperationException(
+                "Rancher authentication not configured. Provide either a pass-through Authorization header, Token, or Username/Password");
         }
 
         await _tokenLock.WaitAsync(cancellationToken);
         try
         {
-            // Double-check after acquiring lock
             if (!string.IsNullOrEmpty(_cachedToken) && DateTime.UtcNow < _tokenExpiry)
             {
-                return _cachedToken;
+                return new AuthenticationHeaderValue("Bearer", _cachedToken);
             }
 
             _logger.LogInformation("Creating new Rancher API token");
             var newToken = await CreateTokenAsync(cancellationToken);
             _cachedToken = newToken;
-            
-            // Set token expiry (default to 12 hours)
             _tokenExpiry = DateTime.UtcNow.AddHours(12);
-            
             MetricsService.TokensCreated.Inc();
-            
-            return newToken;
+            return new AuthenticationHeaderValue("Bearer", newToken);
         }
         finally
         {
@@ -104,12 +104,12 @@ public class RancherAuthService : IRancherAuthService
         try
         {
             // First, login to get a token
-            var loginRequest = new
+            var loginRequest = new LoginRequest
             {
-                username = _username,
-                password = _password,
-                description = $"rancher-devops-operator-{DateTime.UtcNow:yyyyMMddHHmmss}",
-                ttl = 43200000 // 12 hours in milliseconds
+                Username = _username,
+                Password = _password,
+                Description = $"rancher-devops-operator-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                Ttl = 43200000 // 12 hours in milliseconds
             };
 
             var loginJson = JsonSerializer.Serialize(loginRequest, RancherJsonSerializerContext.Default.LoginRequest);

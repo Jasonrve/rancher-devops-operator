@@ -186,6 +186,9 @@ public class RancherPrincipal
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
+    [JsonPropertyName("loginName")]
+    public string? LoginName { get; set; }
+
     [JsonPropertyName("principalType")]
     public string PrincipalType { get; set; } = string.Empty;
 }
