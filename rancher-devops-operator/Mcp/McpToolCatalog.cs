@@ -31,6 +31,20 @@ public sealed class McpToolCatalog : IMcpToolCatalog
         new McpToolDefinition("project_member_list", "List Rancher project members.", McpRole.Viewer, ReadOnly: true, Category: "rancher"),
         new McpToolDefinition("project_member_delete", "Delete a Rancher project member binding.", McpRole.Viewer, ReadOnly: false, Category: "rancher"),
         new McpToolDefinition("principal_get_by_name", "Resolve a Rancher principal by name.", McpRole.Viewer, ReadOnly: true, Category: "rancher"),
+
+        new McpToolDefinition("list_fleet_gitrepos", "List Fleet GitRepos.", McpRole.Viewer, ReadOnly: true, Category: "fleet"),
+        new McpToolDefinition("get_fleet_gitrepo", "Get a Fleet GitRepo by id or name.", McpRole.Viewer, ReadOnly: true, Category: "fleet"),
+        new McpToolDefinition("list_fleet_bundles", "List Fleet bundles.", McpRole.Viewer, ReadOnly: true, Category: "fleet"),
+        new McpToolDefinition("get_fleet_bundle_status", "Return the status for a Fleet bundle.", McpRole.Viewer, ReadOnly: true, Category: "fleet"),
+        new McpToolDefinition("get_fleet_sync_status", "Return the sync status for a Fleet GitRepo or bundle.", McpRole.Viewer, ReadOnly: true, Category: "fleet"),
+        new McpToolDefinition("get_fleet_deployment_errors", "Return Fleet deployment errors or failure summaries.", McpRole.Viewer, ReadOnly: true, Category: "fleet"),
+
+        new McpToolDefinition("create_fleet_gitrepo", "Create a Fleet GitRepo.", McpRole.Viewer, ReadOnly: false, Category: "fleet"),
+        new McpToolDefinition("update_fleet_gitrepo", "Update a Fleet GitRepo.", McpRole.Viewer, ReadOnly: false, Category: "fleet"),
+        new McpToolDefinition("delete_fleet_gitrepo", "Delete a Fleet GitRepo.", McpRole.Viewer, ReadOnly: false, Category: "fleet"),
+        new McpToolDefinition("force_fleet_sync", "Force a Fleet sync.", McpRole.Viewer, ReadOnly: false, Category: "fleet"),
+        new McpToolDefinition("pause_fleet_gitrepo", "Pause a Fleet GitRepo.", McpRole.Viewer, ReadOnly: false, Category: "fleet"),
+        new McpToolDefinition("resume_fleet_gitrepo", "Resume a Fleet GitRepo.", McpRole.Viewer, ReadOnly: false, Category: "fleet"),
     };
 
     public IReadOnlyList<McpToolDefinition> GetTools(McpRole role)

@@ -31,6 +31,8 @@ public class McpServerTests
         var tools = response.GetProperty("result").GetProperty("tools");
         Assert.Contains(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "cluster_list");
         Assert.Contains(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "project_member_delete");
+        Assert.Contains(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "list_fleet_gitrepos");
+        Assert.Contains(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "create_fleet_gitrepo");
         Assert.DoesNotContain(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "mcp_token_create");
         Assert.DoesNotContain(tools.EnumerateArray(), tool => tool.GetProperty("name").GetString() == "kubernetes_get");
     }
@@ -108,5 +110,23 @@ public class McpServerTests
         public Task<List<rancher_devops_operator.Models.RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken) => Task.FromResult(new List<rancher_devops_operator.Models.RancherProjectRoleBinding>());
         public Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken) => Task.FromResult(false);
         public Task<rancher_devops_operator.Models.RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken) => Task.FromResult<rancher_devops_operator.Models.RancherPrincipal?>(null);
+        public Task<JsonElement> ListFleetGitReposAsync(CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> GetFleetGitRepoAsync(string repoId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> ListFleetBundlesAsync(CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> GetFleetBundleStatusAsync(string bundleId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> GetFleetSyncStatusAsync(string repoId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> GetFleetDeploymentErrorsAsync(string? repoId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> CreateFleetGitRepoAsync(string name, string? repo, string? branch, IReadOnlyList<string>? paths, IReadOnlyDictionary<string, string>? targets, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> UpdateFleetGitRepoAsync(string repoId, string? name, string? repo, string? branch, IReadOnlyList<string>? paths, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> DeleteFleetGitRepoAsync(string repoId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> ForceFleetSyncAsync(string repoId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> PauseFleetGitRepoAsync(string repoId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+        public Task<JsonElement> ResumeFleetGitRepoAsync(string repoId, CancellationToken cancellationToken) => Task.FromResult(EmptyObject());
+
+        private static JsonElement EmptyObject()
+        {
+            using var doc = JsonDocument.Parse("{}");
+            return doc.RootElement.Clone();
+        }
     }
 }

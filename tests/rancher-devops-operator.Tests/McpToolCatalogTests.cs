@@ -17,6 +17,8 @@ public class McpToolCatalogTests
         Assert.Contains("project_list", tools);
         Assert.Contains("namespace_create", tools);
         Assert.Contains("principal_get_by_name", tools);
+        Assert.Contains("list_fleet_gitrepos", tools);
+        Assert.Contains("create_fleet_gitrepo", tools);
         Assert.DoesNotContain("kubernetes_get", tools);
         Assert.DoesNotContain("mcp_token_create", tools);
     }

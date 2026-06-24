@@ -126,6 +126,47 @@ public sealed class McpToolExecutor : IMcpToolExecutor
                 RequireString(arguments, "principalName", "name"),
                 cancellationToken)),
 
+            "list_fleet_gitrepos" => WrapJson(await _rancherApiService.ListFleetGitReposAsync(cancellationToken)),
+            "get_fleet_gitrepo" => WrapJson(await _rancherApiService.GetFleetGitRepoAsync(
+                RequireString(arguments, "id", "gitRepoId", "name", "gitRepoName"),
+                cancellationToken)),
+            "list_fleet_bundles" => WrapJson(await _rancherApiService.ListFleetBundlesAsync(cancellationToken)),
+            "get_fleet_bundle_status" => WrapJson(await _rancherApiService.GetFleetBundleStatusAsync(
+                RequireString(arguments, "id", "bundleId", "name", "bundleName"),
+                cancellationToken)),
+            "get_fleet_sync_status" => WrapJson(await _rancherApiService.GetFleetSyncStatusAsync(
+                RequireString(arguments, "gitRepoId", "id", "name", "gitRepoName"),
+                cancellationToken)),
+            "get_fleet_deployment_errors" => WrapJson(await _rancherApiService.GetFleetDeploymentErrorsAsync(
+                RequireString(arguments, "gitRepoId", "id", "name", "gitRepoName"),
+                cancellationToken)),
+            "create_fleet_gitrepo" => WrapJson(await _rancherApiService.CreateFleetGitRepoAsync(
+                RequireString(arguments, "name", "gitRepoName"),
+                GetString(arguments, "repo"),
+                GetString(arguments, "branch"),
+                GetStringList(arguments, "paths"),
+                GetStringDictionary(arguments, "targets"),
+                cancellationToken)),
+            "update_fleet_gitrepo" => WrapJson(await _rancherApiService.UpdateFleetGitRepoAsync(
+                RequireString(arguments, "id", "gitRepoId", "name", "gitRepoName"),
+                GetString(arguments, "name"),
+                GetString(arguments, "repo"),
+                GetString(arguments, "branch"),
+                GetStringList(arguments, "paths"),
+                cancellationToken)),
+            "delete_fleet_gitrepo" => WrapJson(await _rancherApiService.DeleteFleetGitRepoAsync(
+                RequireString(arguments, "id", "gitRepoId", "name", "gitRepoName"),
+                cancellationToken)),
+            "force_fleet_sync" => WrapJson(await _rancherApiService.ForceFleetSyncAsync(
+                RequireString(arguments, "gitRepoId", "id", "name", "gitRepoName"),
+                cancellationToken)),
+            "pause_fleet_gitrepo" => WrapJson(await _rancherApiService.PauseFleetGitRepoAsync(
+                RequireString(arguments, "gitRepoId", "id", "name", "gitRepoName"),
+                cancellationToken)),
+            "resume_fleet_gitrepo" => WrapJson(await _rancherApiService.ResumeFleetGitRepoAsync(
+                RequireString(arguments, "gitRepoId", "id", "name", "gitRepoName"),
+                cancellationToken)),
+
             _ => WrapText($"Tool '{toolName}' is enabled but no executor was registered."),
         };
     }
@@ -201,6 +242,50 @@ public sealed class McpToolExecutor : IMcpToolExecutor
         return arguments.Value.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+    }
+
+    private static Dictionary<string, string>? GetStringDictionary(JsonElement? arguments, string name)
+    {
+        if (arguments is null || arguments.Value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!arguments.Value.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in value.EnumerateObject())
+        {
+            if (property.Value.ValueKind == JsonValueKind.String)
+            {
+                result[property.Name] = property.Value.GetString() ?? string.Empty;
+            }
+        }
+
+        return result;
+    }
+
+    private static List<string>? GetStringList(JsonElement? arguments, string name)
+    {
+        if (arguments is null || arguments.Value.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!arguments.Value.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        return value.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString())
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item!)
+            .ToList();
     }
 
     private static object WrapText(string text) => new

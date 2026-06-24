@@ -27,6 +27,19 @@ public interface IRancherApiService
     Task<List<RancherProjectRoleBinding>> GetProjectMembersAsync(string projectId, CancellationToken cancellationToken);
     Task<bool> DeleteProjectMemberAsync(string bindingId, CancellationToken cancellationToken);
     Task<RancherPrincipal?> GetPrincipalByNameAsync(string principalName, CancellationToken cancellationToken);
+
+    Task<JsonElement> ListFleetGitReposAsync(CancellationToken cancellationToken);
+    Task<JsonElement> GetFleetGitRepoAsync(string repoId, CancellationToken cancellationToken);
+    Task<JsonElement> ListFleetBundlesAsync(CancellationToken cancellationToken);
+    Task<JsonElement> GetFleetBundleStatusAsync(string bundleId, CancellationToken cancellationToken);
+    Task<JsonElement> GetFleetSyncStatusAsync(string repoId, CancellationToken cancellationToken);
+    Task<JsonElement> GetFleetDeploymentErrorsAsync(string? repoId, CancellationToken cancellationToken);
+    Task<JsonElement> CreateFleetGitRepoAsync(string name, string? repo, string? branch, IReadOnlyList<string>? paths, IReadOnlyDictionary<string, string>? targets, CancellationToken cancellationToken);
+    Task<JsonElement> UpdateFleetGitRepoAsync(string repoId, string? name, string? repo, string? branch, IReadOnlyList<string>? paths, CancellationToken cancellationToken);
+    Task<JsonElement> DeleteFleetGitRepoAsync(string repoId, CancellationToken cancellationToken);
+    Task<JsonElement> ForceFleetSyncAsync(string repoId, CancellationToken cancellationToken);
+    Task<JsonElement> PauseFleetGitRepoAsync(string repoId, CancellationToken cancellationToken);
+    Task<JsonElement> ResumeFleetGitRepoAsync(string repoId, CancellationToken cancellationToken);
 }
 
 public class RancherApiService : IRancherApiService
@@ -733,5 +746,101 @@ public class RancherApiService : IRancherApiService
             _logger.LogError(ex, "Error searching principal name {PrincipalName}", principalName);
             return null;
         }
+    }
+
+    public async Task<JsonElement> ListFleetGitReposAsync(CancellationToken cancellationToken)
+        => await GetFleetJsonAsync("/v1/fleet.cattle.io.gitrepos", cancellationToken);
+
+    public async Task<JsonElement> GetFleetGitRepoAsync(string repoId, CancellationToken cancellationToken)
+        => await GetFleetJsonAsync($"/v1/fleet.cattle.io.gitrepos/{Uri.EscapeDataString(repoId)}", cancellationToken);
+
+    public async Task<JsonElement> ListFleetBundlesAsync(CancellationToken cancellationToken)
+        => await GetFleetJsonAsync("/v1/fleet.cattle.io.bundles", cancellationToken);
+
+    public async Task<JsonElement> GetFleetBundleStatusAsync(string bundleId, CancellationToken cancellationToken)
+        => await GetFleetJsonAsync($"/v1/fleet.cattle.io.bundles/{Uri.EscapeDataString(bundleId)}", cancellationToken);
+
+    public async Task<JsonElement> GetFleetSyncStatusAsync(string repoId, CancellationToken cancellationToken)
+        => await GetFleetJsonAsync($"/v1/fleet.cattle.io.gitrepos/{Uri.EscapeDataString(repoId)}", cancellationToken);
+
+    public async Task<JsonElement> GetFleetDeploymentErrorsAsync(string? repoId, CancellationToken cancellationToken)
+        => await GetFleetJsonAsync(
+            string.IsNullOrWhiteSpace(repoId)
+                ? "/v1/fleet.cattle.io.bundles?limit=50"
+                : $"/v1/fleet.cattle.io.bundles?gitRepoId={Uri.EscapeDataString(repoId)}",
+            cancellationToken);
+
+    public async Task<JsonElement> CreateFleetGitRepoAsync(string name, string? repo, string? branch, IReadOnlyList<string>? paths, IReadOnlyDictionary<string, string>? targets, CancellationToken cancellationToken)
+    {
+        var body = new
+        {
+            type = "fleet.cattle.io.gitrepo",
+            name,
+            repo,
+            branch,
+            paths,
+            targets,
+        };
+
+        return await SendFleetJsonAsync(HttpMethod.Post, "/v1/fleet.cattle.io.gitrepos", body, cancellationToken);
+    }
+
+    public async Task<JsonElement> UpdateFleetGitRepoAsync(string repoId, string? name, string? repo, string? branch, IReadOnlyList<string>? paths, CancellationToken cancellationToken)
+    {
+        var body = new
+        {
+            name,
+            repo,
+            branch,
+            paths,
+        };
+
+        return await SendFleetJsonAsync(HttpMethod.Put, $"/v1/fleet.cattle.io.gitrepos/{Uri.EscapeDataString(repoId)}", body, cancellationToken);
+    }
+
+    public async Task<JsonElement> DeleteFleetGitRepoAsync(string repoId, CancellationToken cancellationToken)
+        => await SendFleetJsonAsync(HttpMethod.Delete, $"/v1/fleet.cattle.io.gitrepos/{Uri.EscapeDataString(repoId)}", null, cancellationToken);
+
+    public async Task<JsonElement> ForceFleetSyncAsync(string repoId, CancellationToken cancellationToken)
+        => await SendFleetJsonAsync(HttpMethod.Post, $"/v1/fleet.cattle.io.gitrepos/{Uri.EscapeDataString(repoId)}?action=forceSync", new { }, cancellationToken);
+
+    public async Task<JsonElement> PauseFleetGitRepoAsync(string repoId, CancellationToken cancellationToken)
+        => await SendFleetJsonAsync(HttpMethod.Post, $"/v1/fleet.cattle.io.gitrepos/{Uri.EscapeDataString(repoId)}?action=pause", new { }, cancellationToken);
+
+    public async Task<JsonElement> ResumeFleetGitRepoAsync(string repoId, CancellationToken cancellationToken)
+        => await SendFleetJsonAsync(HttpMethod.Post, $"/v1/fleet.cattle.io.gitrepos/{Uri.EscapeDataString(repoId)}?action=resume", new { }, cancellationToken);
+
+    private async Task<JsonElement> GetFleetJsonAsync(string path, CancellationToken cancellationToken)
+    {
+        var response = await _httpClient.GetAsync(path, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadFleetJsonAsync(response, cancellationToken);
+    }
+
+    private async Task<JsonElement> SendFleetJsonAsync(HttpMethod method, string path, object? body, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            var json = JsonSerializer.Serialize(body);
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        }
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadFleetJsonAsync(response, cancellationToken);
+    }
+
+    private static async Task<JsonElement> ReadFleetJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            using var empty = JsonDocument.Parse("{}");
+            return empty.RootElement.Clone();
+        }
+
+        using var doc = JsonDocument.Parse(content);
+        return doc.RootElement.Clone();
     }
 }
