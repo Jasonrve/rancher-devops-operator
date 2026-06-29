@@ -1,0 +1,16 @@
+{
+  "name": "rancher-devops-operator",
+  "private": true,
+  "version": "0.5.1",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev docs-site",
+    "docs:build": "vitepress build docs-site",
+    "docs:preview": "vitepress preview docs-site"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "playwright": "^1.55.0",
+    "vitepress": "^1.6.3"
+  }
+}
